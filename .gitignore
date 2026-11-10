@@ -1,0 +1,25 @@
+# Local notes and settings (this PC only)
+docs/local.md
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Downloaded media and partial downloads: never commit videos or audio
+downloads/
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.mp3
+*.m4a
+*.opus
+*.part
+*.ytdl
