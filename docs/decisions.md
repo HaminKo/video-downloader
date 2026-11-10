@@ -2,6 +2,19 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-10: Deno for YouTube, and yt-dlp's own ffmpeg build, both from winget
+- **Reason:** Deno is yt-dlp's default JavaScript runtime, so it works with no settings. `yt-dlp.FFmpeg` is yt-dlp's own ffmpeg build. The yt-dlp README recommends it for its patches against ffmpeg bugs that affect yt-dlp (general knowledge, not re-checked). Both install for this user only, with no admin prompt.
+- **Who decided:** the user, on Claude's suggestion (To do 1).
+- **Rejected:**
+  - Node, which is already installed: it would work, but yt-dlp needs a setting to turn it on.
+  - `Gyan.FFmpeg`: the usual general-purpose build, without yt-dlp's patches.
+- **Also chosen in To do 1, Claude's defaults that the user didn't discuss:**
+  - plain `pip` with a `.venv` and an editable install (`pip install -e ".[dev]"`), not uv
+  - the hatchling build backend
+  - yt-dlp with only a minimum version (2025.11.12, the first to need a JS runtime), so `pip install -U` keeps it current
+  - pyright in "standard" mode
+  - ruff with rules E, F, W, I, UP, B, SIM
+
 ## 2026-11-10: Commits may show the user's own GitHub account
 - **Reason:** the user is fine with their name being attached to this project. The commit name matches the GitHub login, and GitHub links commits to an account by email, so the account shows on every commit if the repo goes public.
 - **Who decided:** the user, after Claude pointed this out.

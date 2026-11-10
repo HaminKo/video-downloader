@@ -4,9 +4,11 @@ Researched 2026-11-10 during project setup: two quick web searches, not a deep r
 
 ## yt-dlp does the downloading
 - yt-dlp is the standard free downloader (a fork of youtube-dl). It supports thousands of sites and works both as a command-line tool and as a Python library. License: Unlicense. Source: [yt-dlp on GitHub](https://github.com/yt-dlp/yt-dlp).
+- Sites beyond YouTube (checked 2026-11-10 in [supportedsites.md](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)): Reddit, Twitter, Bluesky, Imgur, Facebook, Instagram, TikTok, Vimeo and Twitch are all listed. Single posts are not marked broken; some Instagram profile and TikTok tag/sound pages are marked "Currently broken". Our app passes the link to yt-dlp unchanged, so no site needs code of its own in our app. Whether a given site really downloads hasn't been tested yet; To do 3's test includes Reddit and X.
+  - Not checked (general knowledge): x.com links go through the "twitter" extractor; Instagram often asks for a login, and age-restricted X posts, private posts and some Reddit NSFW posts need one too. A login needs browser cookies, which is on the "Later" list in docs/todo.md.
 - It needs ffmpeg to join separate video and audio streams and to convert to MP3. (General knowledge; it's in the yt-dlp README.)
 - **YouTube needs a JavaScript runtime since yt-dlp 2025.11.12.** Deno is recommended and is the only runtime enabled by default; Node, Bun and QuickJS also work but must be turned on (`--js-runtimes`). YouTube without a runtime is now "deprecated". yt-dlp also needs the yt-dlp-ejs package, which the official .exe already includes. Sources: [yt-dlp issue #15012](https://github.com/yt-dlp/yt-dlp/issues/15012), [EJS wiki](https://github.com/yt-dlp/yt-dlp/wiki/EJS), [GIGAZINE](https://www.gigazine.net/gsc_news/en/20251113-yt-dlp-required-deno-javascript-runtime).
-  - Not yet checked: that `pip install "yt-dlp[default]"` pulls in yt-dlp-ejs (general knowledge; confirm in To do 1).
+  - Confirmed 2026-11-10 (To do 1): `pip install "yt-dlp[default]"` installed yt-dlp 2026.10.26 with yt-dlp-ejs 0.8.0, and `yt-dlp -v` lists `yt_dlp_ejs-0.8.0` under optional libraries and `deno-2.9.8` under JS runtimes.
   - Node 26 is already installed on this PC, so it could replace Deno with one setting. Deno is still the suggestion because it works with no extra settings.
 
 ## Existing apps built on yt-dlp

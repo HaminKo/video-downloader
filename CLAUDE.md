@@ -16,10 +16,11 @@ Don't build what's under "Later" in docs/todo.md until asked. Never: anything th
 - Commit after each working step. End a step with the finish-step skill.
 
 ## Build specifics
-Read by the /build-todo skill. To do 1 sets these up and replaces the rough times with measured ones.
+Read by the /build-todo skill. Times measured 2026-11-10 (To do 1).
 - **Checks** (from the project folder, `.venv` active):
-  - After each edit (fast): `ruff check .` and `ruff format .` (~1 s).
-  - Once per step (slow): `pytest` (a few seconds; tests never touch the internet) and `pyright` (~5 s).
+  - After each edit (fast): `ruff check .` and `ruff format .` (0.1 s together).
+  - Once per step (slow): `pytest` (under 1 s; tests never touch the internet) and `pyright` (1-2 s).
+  - pytest runs with `--capture=sys` (set in pyproject.toml): the default breaks a second tkinter window (docs/research/tkinter-tests.md).
   - GUI test and screenshots: added by To do 2.
 - **Docs to update when behaviour changes:** README.md (headline features, install and run steps, Credits) and any help text in the app. When a README section grows past about a screen, move it into docs/NAME.md and link it from the README.
 - **Must keep working:** (empty for now)
@@ -32,6 +33,8 @@ Now and next: the "Where we are" block at the top of docs/todo.md.
 One line per decision to follow; reasons, who decided and what was rejected: docs/decisions.md.
 - Build on yt-dlp as a Python library; never write our own site downloaders. Desktop window first, Edge button later.
 - Python 3.13 with tkinter for the window.
+- Deno (yt-dlp's default) is the JavaScript runtime for YouTube, not Node.
+- ffmpeg is winget's `yt-dlp.FFmpeg` (yt-dlp's own build).
 
 ## Project docs
 - README.md: what it is, install and run, Credits.

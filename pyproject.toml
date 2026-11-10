@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "video-downloader"
+version = "0.1.0"
+description = "Paste a video link, get it as MP4 or MP3: a small window on top of yt-dlp."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    # [default] also installs yt-dlp-ejs, which YouTube needs (with Deno).
+    # No upper pin: YouTube changes often, so keep yt-dlp current with pip install -U.
+    "yt-dlp[default]>=2025.11.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "pyright"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/video_downloader"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The default (--capture=fd) makes a second tk.Tk() in one run fail about half
+# the time ("invalid command name tcl_findLibrary"). See docs/research/tkinter-tests.md.
+addopts = "--capture=sys"
