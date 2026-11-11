@@ -44,12 +44,15 @@ class App:
         self.status.set(NOT_BUILT_YET)
 
 
-def main() -> None:
+def start() -> App:
+    """Build the window as the user sees it; the GUI test starts it this way too."""
     if sys.platform == "win32":
         # Without this, Windows scales the window up and the text looks blurry.
         import ctypes
 
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    root = tk.Tk()
-    App(root)
-    root.mainloop()
+    return App(tk.Tk())
+
+
+def main() -> None:
+    start().root.mainloop()

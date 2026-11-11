@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "pyright"]
+# pillow: screenshots of the window for the GUI test (tests/gui).
+dev = ["pytest", "ruff", "pyright", "pillow"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/video_downloader"]

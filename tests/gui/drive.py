@@ -1,0 +1,222 @@
+"""Start the real window and use it like a user: shared by the GUI test and the
+screenshots. Keys and clicks go through Tk's own events, so they run the same
+code a real key press or click runs, without moving the user's mouse.
+
+The window takes the keyboard focus while it is open (about 0.3 s each). Real
+key presses and clicks are ignored then, so someone typing in another window
+can't change the result (docs/research/gui-testing.md)."""
+
+import ctypes
+import tempfile
+import tkinter as tk
+from collections.abc import Iterator
+from contextlib import contextmanager
+from ctypes import wintypes
+from pathlib import Path
+
+from PIL import ImageGrab
+
+from video_downloader.app import App, start
+
+SCREENSHOT_DIR = Path(tempfile.gettempdir()) / "video-downloader-screenshots"
+
+# The link the GUI test and the screenshots type.
+LINK = "https://www.youtube.com/watch?v=abc_123-XYZ"
+
+# Tk's key names for the printable characters that aren't letters or digits.
+KEY_NAMES = {
+    " ": "space",
+    "!": "exclam",
+    '"': "quotedbl",
+    "#": "numbersign",
+    "$": "dollar",
+    "%": "percent",
+    "&": "ampersand",
+    "'": "apostrophe",
+    "(": "parenleft",
+    ")": "parenright",
+    "*": "asterisk",
+    "+": "plus",
+    ",": "comma",
+    "-": "minus",
+    ".": "period",
+    "/": "slash",
+    ":": "colon",
+    ";": "semicolon",
+    "<": "less",
+    "=": "equal",
+    ">": "greater",
+    "?": "question",
+    "@": "at",
+    "[": "bracketleft",
+    "\\": "backslash",
+    "]": "bracketright",
+    "^": "asciicircum",
+    "_": "underscore",
+    "`": "grave",
+    "{": "braceleft",
+    "|": "bar",
+    "}": "braceright",
+    "~": "asciitilde",
+}
+
+# Bind tag put first on every widget: it drops real key presses and clicks.
+IGNORE_REAL_INPUT = "GuiTestIgnoreRealInput"
+
+
+class InputState:
+    """True only while this module sends a key or click; real input is ignored
+    the rest of the time."""
+
+    sending = False
+
+
+@contextmanager
+def sending() -> Iterator[None]:
+    InputState.sending = True
+    try:
+        yield
+    finally:
+        InputState.sending = False
+
+
+def open_window(width: int | None = None) -> App:
+    """Start the window as main() does, on top, with the link box focused.
+
+    width: in screen pixels; None keeps the size the window opens with.
+    """
+    app = start()
+    root = app.root
+    try:
+        root.attributes("-topmost", True)
+        if width is not None:
+            root.update_idletasks()  # works out the height the widgets need
+            root.geometry(f"{width}x{root.winfo_reqheight()}")
+        ignore_real_input(root)
+        root.update()
+        focus(app.link_entry)
+    except BaseException:
+        root.destroy()
+        raise
+    return app
+
+
+def ignore_real_input(window: tk.Misc) -> None:
+    """Drop key presses and clicks that don't come from this module, in the
+    window and everything in it. Safe to call again for widgets added since."""
+
+    def drop_if_real(_event: tk.Event) -> str | None:
+        return None if InputState.sending else "break"
+
+    for sequence in ("<KeyPress>", "<KeyRelease>", "<ButtonPress>", "<ButtonRelease>"):
+        window.bind_class(IGNORE_REAL_INPUT, sequence, drop_if_real)
+    widgets: list[tk.Misc] = [window]
+    while widgets:
+        widget = widgets.pop()
+        if IGNORE_REAL_INPUT not in widget.bindtags():
+            widget.bindtags((IGNORE_REAL_INPUT, *widget.bindtags()))
+        widgets.extend(widget.winfo_children())
+
+
+def focus(widget: tk.Widget) -> None:
+    """Give the widget the keyboard focus, taking it back if another window
+    took it (a click elsewhere, or Windows activating another window)."""
+    if widget.focus_get() is widget:
+        return
+    widget.focus_force()
+    widget.update()
+    if widget.focus_get() is not widget:
+        raise RuntimeError(f"{widget} didn't get the keyboard focus")
+
+
+def type_text(widget: tk.Widget, text: str) -> None:
+    """Type text one key at a time into the widget."""
+    for char in text:
+        if char.isascii() and char.isalnum():
+            press(widget, char)
+        elif char in KEY_NAMES:
+            press(widget, KEY_NAMES[char])
+        else:
+            raise ValueError(f"Can't type {char!r}: add its Tk key name to KEY_NAMES")
+
+
+def press(widget: tk.Widget, key: str) -> None:
+    """Press and release one key in the widget, by its Tk name ("a", "Return",
+    "slash"). Tk sends key presses to the widget with the keyboard focus."""
+    ignore_real_input(widget.winfo_toplevel())
+    focus(widget)
+    with sending():
+        widget.event_generate("<KeyPress>", keysym=key)
+        widget.event_generate("<KeyRelease>", keysym=key)
+    widget.update()
+
+
+def click(widget: tk.Widget) -> None:
+    """Move the mouse onto the middle of the widget and click it."""
+    assert_inside_window(widget)
+    ignore_real_input(widget.winfo_toplevel())
+    x, y = widget.winfo_width() // 2, widget.winfo_height() // 2
+    with sending():
+        widget.event_generate("<Enter>", x=x, y=y)
+        widget.event_generate("<ButtonPress-1>", x=x, y=y)
+        widget.event_generate("<ButtonRelease-1>", x=x, y=y)
+    widget.update()
+
+
+def box(widget: tk.Misc) -> tuple[int, int, int, int]:
+    """The widget's left, top, right and bottom edge, in pixels from the
+    window's top left corner."""
+    top = widget.winfo_toplevel()
+    left = widget.winfo_rootx() - top.winfo_rootx()
+    upper = widget.winfo_rooty() - top.winfo_rooty()
+    return left, upper, left + widget.winfo_width(), upper + widget.winfo_height()
+
+
+def assert_inside_window(widget: tk.Misc) -> None:
+    """Fail unless the whole widget is shown inside the window."""
+    root = widget.winfo_toplevel()
+    left, upper, right, lower = box(widget)
+    inside = (
+        widget.winfo_viewable()
+        and left >= 0
+        and upper >= 0
+        and right <= root.winfo_width()
+        and lower <= root.winfo_height()
+    )
+    assert inside, (
+        f"{widget} is not fully inside the window: its box is "
+        f"{(left, upper, right, lower)}, the window is "
+        f"{root.winfo_width()}x{root.winfo_height()}"
+    )
+
+
+def screenshot(app: App, name: str) -> Path:
+    """Save the whole window, title bar included, as NAME.png in SCREENSHOT_DIR."""
+    root = app.root
+    root.update()
+    SCREENSHOT_DIR.mkdir(exist_ok=True)
+    path = SCREENSHOT_DIR / f"{name}.png"
+    ImageGrab.grab(bbox=window_frame(root), all_screens=True).save(path)
+    return path
+
+
+def window_frame(root: tk.Tk) -> tuple[int, int, int, int]:
+    """The window's visible edges on screen, title bar included, in pixels.
+
+    Asks Windows (DWM) for them: GetWindowRect would add an invisible border.
+    """
+    hwnd = int(root.wm_frame(), 16)
+    rect = wintypes.RECT()
+    dwmwa_extended_frame_bounds = 9
+    result = ctypes.windll.dwmapi.DwmGetWindowAttribute(
+        wintypes.HWND(hwnd),
+        dwmwa_extended_frame_bounds,
+        ctypes.byref(rect),
+        ctypes.sizeof(rect),
+    )
+    if result != 0:
+        raise OSError(
+            f"Windows didn't give the window's edges (DwmGetWindowAttribute "
+            f"returned {result & 0xFFFFFFFF:#010x})"
+        )
+    return rect.left, rect.top, rect.right, rect.bottom

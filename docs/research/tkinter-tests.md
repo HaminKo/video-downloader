@@ -13,10 +13,10 @@
 
 ## Key presses don't reach a hidden window (2026-11-10, To do 1)
 - `link_entry.event_generate("<Return>")` on a withdrawn window did nothing: the test failed 10 of 10 runs. Tk delivers key events to the window that has keyboard focus, and a hidden window has none.
-- The pytest tests check that the binding is there (`widget.bind("<Return>")` returns its script). Real key presses belong in the GUI test with a visible window (To do 2).
+- The pytest tests check that the binding is there (`widget.bind("<Return>")` returns its script). Real key presses belong in the GUI test with a visible window (To do 2). Done in To do 2: the GUI test presses Enter in a visible window that has the keyboard focus (docs/research/gui-testing.md).
 
 ## Finding the real window from outside (2026-11-10, To do 1; notes for To do 2)
 - `.venv\Scripts\python.exe` is a small launcher that starts the real Python as a **child process**. That child owns the window, so the launcher's `MainWindowHandle` is 0.
 - The launcher has **two** children, `conhost.exe` and `python.exe`. Filter on `Name='python.exe'` (`Get-CimInstance Win32_Process -Filter "ParentProcessId=$id AND Name='python.exe'"`). Taking the first child picked conhost, which has no window, so it looked as if the app showed none. That was wrong: with the filter, the app's window was visible, titled "Video Downloader", 2 s after start.
 - In PowerShell, passing `$null` to a P/Invoke `string` parameter sends an empty string, so `FindWindow($null, "Video Downloader")` finds nothing. Use `[NullString]::Value` instead.
-- A screenshot from outside wasn't finished in To do 1. To do 2 should do screenshots from inside the app or test instead.
+- A screenshot from outside wasn't finished in To do 1. To do 2 should do screenshots from inside the app or test instead. Done in To do 2: screenshots are taken from inside the test process with Pillow (docs/research/gui-testing.md).

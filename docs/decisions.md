@@ -2,6 +2,16 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-11: GUI test with Tk's own key and click events in the same process; Pillow for screenshots
+- **Reason:** Tk's events run the same bindings as real key presses and clicks, need no extra package and leave the user's mouse and other windows alone. The whole test takes about 3 s. Pillow's `ImageGrab` is the standard way to take a screenshot (one line), and it is only a development package. Details and measurements: docs/research/gui-testing.md.
+- **Who decided:** the user, on Claude's suggestion (To do 2).
+- **Rejected:**
+  - OS-level input (pywinauto, pyautogui, `SendInput`): it moves the real cursor and types into whichever window is in front, and breaks if the user touches the mouse.
+  - About 50 lines of our own screenshot code instead of Pillow: more code to keep working for the same result.
+- **Also chosen in To do 2, Claude's defaults that the user didn't discuss:**
+  - GUI test files in tests/gui with names that don't start with `test_`, so a plain `pytest` skips them (they open a window on top)
+  - while the test runs, real key presses and clicks in its window are ignored, added after flaky runs
+
 ## 2026-11-10: Deno for YouTube, and yt-dlp's own ffmpeg build, both from winget
 - **Reason:** Deno is yt-dlp's default JavaScript runtime, so it works with no settings. `yt-dlp.FFmpeg` is yt-dlp's own ffmpeg build. The yt-dlp README recommends it for its patches against ffmpeg bugs that affect yt-dlp (general knowledge, not re-checked). Both install for this user only, with no admin prompt.
 - **Who decided:** the user, on Claude's suggestion (To do 1).
