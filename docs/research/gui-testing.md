@@ -10,7 +10,8 @@ Built in To do 2 (2026-11-11). Files: tests/gui/drive.py (open the window, type,
 - **Screenshots:** Pillow's `ImageGrab.grab(bbox=..., all_screens=True)`, with the box from `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)`: the visible window with its title bar. `GetWindowRect` would add Windows 10/11's invisible resize border (general knowledge, not tried here). Pillow 13 also has `ImageGrab.grab(window=hwnd)`, not tried.
 - **Plain `pytest` skips the GUI test:** the file is `window_gui.py`, and pytest only collects `test_*.py` and `*_test.py` on its own. A file named on the command line is collected anyway, with pytest's readable assert messages.
 
-## Measured (2026-11-11, this PC: Windows 11, display at 200% scaling, Tk 8.6, Python 3.13.1)
+## Measured (2026-11-11, this PC: Windows 11, display at 150% scaling, Tk 8.6, Python 3.13.1)
+- **Correction (2026-11-11):** this section first said 200% scaling. That was wrong: it came from `tk scaling` = 2.0, which is pixels per point (2.0 × 72 = 144 DPI). Measured with `GetDpiForSystem()`: 144 DPI = 150%.
 - **Pillow 13.0.0:** 7.3 MB wheel download, 16 MB installed. A reinstall from pip's cache took 3.2 s. The first install's time wasn't measured (the timing command failed).
 - **GUI test:** 6 tests (3 tests × 2 sizes), 1.4 to 3.7 s by pytest's report, about 3 s in all.
 - **Screenshots:** both screens in 1.5 s. Each is 484 × 172 px, 9 to 10 KB. About 110 tokens each: an **estimate** from width × height / 750.
@@ -37,7 +38,7 @@ Built in To do 2 (2026-11-11). Files: tests/gui/drive.py (open the window, type,
 - Key presses go to the widget with the keyboard focus, not to the widget `event_generate` is called on. drive.py's `press()` focuses the widget first. A hidden (withdrawn) window gets no key presses at all (tkinter-tests.md).
 - Only letters and digits work as their own key names. Other characters need Tk's name (`colon`, `slash`, ...): `KEY_NAMES` in drive.py has all printable ASCII characters. All 94 printable ASCII characters typed correctly (2026-11-11). Anything else (`é`) stops the test with "add its Tk key name to KEY_NAMES".
 - The filter tag goes on every widget when the window opens, and again before each key press and click, so widgets added later (To do 3 may add some) get it too. Between being created and the next key press or click, a new widget still takes real input.
-- The window opens at its smallest size, 480 px wide (484 with its frame). At this PC's 200% scaling, that is about 240 px at normal size: the link box shows about 30 characters of a link.
+- The window opens at its smallest size, 480 px wide (484 with its frame). At this PC's 150% scaling, that is about 320 px at normal size: the link box shows about 30 characters of a link (seen in the screenshot). (First written as 200% and 240 px: wrong, see the correction above.) Widening it is part of To do 3.
 
 ## Sources
 - Tk `event generate`: https://www.tcl-lang.org/man/tcl8.6/TkCmd/event.htm
