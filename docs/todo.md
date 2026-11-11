@@ -1,20 +1,23 @@
 # To do
 
 ## Where we are
-- Now: To do 3 (Download from a link)
-- Next: none planned yet
+- Now: To do 3, step B (clear messages when it fails)
+- Next: To do 4
 - Updated: 2026-11-11
 
-Next number: 4
+Next number: 5
 
 ## To do
 
 ### 3. Download from a link (medium): "paste a link, get the video"
-- **Goal:** paste a link (for example a YouTube video, or any page yt-dlp supports), pick MP4 (video) or MP3 (audio only), press Download. The file lands in the download folder (default: Videos inside the user's Downloads folder), with progress shown and a clear message when it fails (unsupported site, no internet, private video).
-- **Read first:** yt-dlp README "Embedding yt-dlp" (options, `progress_hooks`, MP3 post-processing); docs/research/prior-art.md.
-- **Approach:** yt-dlp as a library, running in a background thread so the window keeps responding; progress goes to the window through a queue that the window checks with `after()`. MP4: best video and audio, merged into an MP4. MP3: best audio, converted with ffmpeg. yt-dlp's error messages are often long, so the status line needs to wrap (`wraplength`) instead of making the window wider (found in To do 1's review). Open the window wider: `minsize(480, 0)` counts screen pixels, so at this PC's 150% scaling the window is only about 320 px at normal size and the link box shows about 30 characters of a link (found in To do 2; docs/research/gui-testing.md). Scale the width with the DPI (`root.winfo_fpixels("1i") / 96`), so it looks the same at any scaling; the GUI test checks that a typical YouTube link fits in the link box.
-- **Ask the user:** (a) MP4 that plays everywhere (H.264) or the highest quality (often AV1/VP9, which Windows' own player may not open)? Suggested: plays everywhere. (b) File name? Suggested: the video's title. (c) File already there? Suggested: skip it and say so. (d) How wide should the window open? Suggested: about 600 px at normal size, so a typical YouTube link (about 45 characters) fits.
-- **Test:** Claude: tests for the download options and error messages that don't touch the internet, plus the GUI test. User: downloads a short YouTube video as MP4 and as MP3 and plays both, downloads one Reddit video and one X video as MP4 (Reddit keeps video and sound separate, so this checks that ffmpeg joins them), then tries a broken link and sees a clear message.
+In its own file, with answers and a Progress list: [docs/todo/03-download.md](todo/03-download.md). Two steps: A downloading works (done), B clear messages when it fails.
+
+### 4. Reddit downloads (small): "add something to make Reddit work later"
+- **Problem:** Reddit links fail with "Account authentication is required", also for a post in a public subreddit (the one tested). Reddit blocks yt-dlp unless its requests look like a browser's. yt-dlp can do that ("impersonation"), but only with the `curl_cffi` package, which isn't installed. Example, from To do 3's test: https://www.reddit.com/r/Asmongold/comments/1xsyq9n/meanwhile_in_us_thatll_be_36367/ . It fails with the yt-dlp command alone, so it isn't our app. YouTube and X work.
+- **Read first:** docs/research/yt-dlp-library.md "Sites" (what happens, step by step); pyproject.toml `dependencies`; README "Install and run" and "Credits".
+- **Approach:** yt-dlp's `curl-cffi` extra (`yt-dlp[default,curl-cffi]`), which its README calls "recommended". Put it in pyproject.toml so a fresh install gets it; no code change expected (yt-dlp's Reddit code uses impersonation by itself once it's available). Add curl_cffi to the README Credits (MIT, by lexiforest) and a decisions.md entry. Claude Code's safety check refused installing it from a Claude session (getting around a bot check), so **the user runs the install command**; Claude prepares the rest.
+- **Ask the user:** (a) curl_cffi, or signing in with browser cookies instead? Suggested: curl_cffi. It needs no account; signing in is on the "Later" list, and reading Edge's or Chrome's cookies on Windows often fails (general knowledge, not checked). (b) Part of the normal install (pyproject.toml), not a separate manual step? Suggested: yes.
+- **Test:** Claude: `yt-dlp --list-impersonate-targets` shows Chrome as available; the usual checks still pass. User: downloads the example link as MP4 and as MP3 and plays both, plus one more Reddit video.
 
 ## Later, only if the user asks
 - Edge button: send the page you're on to the app (browser extension plus native messaging; see docs/research/prior-art.md).

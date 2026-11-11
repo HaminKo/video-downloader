@@ -2,6 +2,18 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-11: MP4 that plays everywhere (H.264 + AAC), MP3 via ffmpeg: yt-dlp's own `-t mp4` and `-t mp3` presets
+- **Reason:** Windows' own player and phones open H.264 MP4s; AV1 and VP9 often don't. yt-dlp ships these settings as presets (yt-dlp 2026.10.26: `-t mp4` sorts formats by `vcodec:h264,lang,quality,res,fps,hdr:12,acodec:aac` and merges into MP4; `-t mp3` takes the best audio and converts it with ffmpeg), so we copy theirs instead of inventing our own. On YouTube this usually means at most 1080p.
+- **Who decided:** the user, on Claude's suggestion (To do 3).
+- **Rejected:** highest quality (often AV1 or VP9, up to 4K): Windows' own player may not open it. Choosing the quality is on the "Later" list.
+- **Also chosen in To do 3, on Claude's suggestions:**
+  - file name: the video's title, cut to 150 bytes. Rejected: yt-dlp's default `Title [id]`, which never clashes but looks cluttered; the cost is that two videos with the same title share a name, so the second counts as "already there"
+  - a file already there is skipped, with a message
+  - a playlist or channel link downloads one video and says playlists aren't supported yet (without a setting, yt-dlp downloads all of it)
+  - one download at a time, no Cancel button; closing the window stops it
+  - the window opens 600 px wide at normal size, scaled with the display's DPI; that is also its smallest size
+  - download folder fixed to Downloads\Videos; no "Open folder" button
+
 ## 2026-11-11: GUI test with Tk's own key and click events in the same process; Pillow for screenshots
 - **Reason:** Tk's events run the same bindings as real key presses and clicks, need no extra package and leave the user's mouse and other windows alone. The whole test takes about 3 s. Pillow's `ImageGrab` is the standard way to take a screenshot (one line), and it is only a development package. Details and measurements: docs/research/gui-testing.md.
 - **Who decided:** the user, on Claude's suggestion (To do 2).

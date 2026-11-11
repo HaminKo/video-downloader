@@ -1,0 +1,44 @@
+# yt-dlp as a library: settings, hooks and what they report
+
+Found while building To do 3, step A (2026-11-11), with yt-dlp 2026.10.26. "Read in the source" means read in `.venv/Lib/site-packages/yt_dlp`; "measured" means run on this PC (tests/test_downloader.py downloads a 1-second clip from a web server on this PC).
+
+## Settings
+- **The `-t mp4` and `-t mp3` presets** (read in the source, `_PRESET_ALIASES` in options.py) convert to these library options (measured with `yt_dlp.parse_options(["--ignore-config", "-t", "mp4"]).ydl_opts`, compared with no options):
+  - mp4: `format_sort` `vcodec:h264,lang,quality,res,fps,hdr:12,acodec:aac`, `merge_output_format` and `final_ext` `mp4`, postprocessor `FFmpegVideoRemuxer` to mp4.
+  - mp3: `format` `ba[acodec^=mp3]/ba/b`, `final_ext` `mp3`, postprocessor `FFmpegExtractAudio` (`preferredcodec` mp3, `preferredquality` "5", `nopostoverwrites` False).
+  - Both also add `FFmpegConcat` (`only_multi_video`, `when: playlist`); left out, since we download one video. `test_settings_are_yt_dlps_own_presets` fails if a yt-dlp update changes the presets.
+- **`final_ext` matters for "already there"** (read in the source, `existing_video_file` in YoutubeDL.py): yt-dlp looks for the finished file under `final_ext`. Without it, an existing `Title.mp3` isn't found and the audio is downloaded and converted again.
+- **`playlist_items: "1"`** with `noplaylist: True`: a watch link with `&list=` gets just the video, a playlist or channel link only its first video. Not yet tried with a real playlist link.
+- **`color`**: yt-dlp puts terminal color codes into its error messages when the terminal supports them. `{"stdout": "never", "stderr": "never"}` turns them off. A plain string (`"never"`) also works at runtime, but pyright's stub accepts only the dict form.
+- **Types:** pyright bundles stubs for yt-dlp (typeshed's `types-yt-dlp`). The settings type is `yt_dlp._Params`, a TypedDict that exists only for type checking: import it under `if TYPE_CHECKING:` and write it in quotes. Its hooks take `Mapping[str, Any]`, so our hook functions must too.
+- **File dates:** with the library's defaults (`updatetime` unset), files get the download time as their date, not the upload date. The command line sets `updatetime` only with `--mtime` or the `mtime-by-default` compat option (read in `__init__.py`).
+
+## Hooks
+- **progress_hooks** (measured): `status` "downloading" many times with `downloaded_bytes` and `total_bytes` or `total_bytes_estimate` (HLS: `fragment_index` and `fragment_count`), then "finished". `info_dict` is the format being downloaded, so `vcodec == "none"` means audio and `acodec == "none"` means video.
+- **A file that is already there** (measured, and read in `process_info`):
+  - Single-file download: yt-dlp still calls the downloader, which reports "finished" (no "downloading") for the existing file.
+  - Video and audio merged (YouTube): the downloader isn't called at all for an existing final file (read in the source; not yet measured, since the test clip is a single file).
+- **Downloads handed to ffmpeg report only "finished"** (read in the source: `ExternalFD.real_download` in downloader/external.py). yt-dlp uses ffmpeg as the downloader for live streams, for HLS protocol `m3u8` (not `m3u8_native`), and when its own HLS downloader finds features it doesn't support ("extraction will be delegated to ffmpeg", downloader/hls.py). So the bar can't fill for those; the window shows a moving bar from the start instead.
+- **How the app tells "already there"** (To do 3, step A): it lists the folder's file names before the download; the result is "already there" when the final file's name was in that list.
+  - Wrong first try, replaced: "nothing was downloaded" = no progress report at all. Wrong because of the single-file "finished" report above (caught by the test).
+  - Wrong second try, replaced after the code review: = no "downloading" report. Wrong for downloads handed to ffmpeg, which report only "finished".
+- **post_hooks** get the final file's path, also when the file was already there (read in the source, measured).
+- **postprocessor_hooks**: "started" and "finished" per step; `postprocessor` is the step's name (`Merger`, `ExtractAudio`, `VideoRemuxer`, `MoveFiles`, ...). Measured: `ExtractAudio` reports "started" twice per run, and also runs (and reports) when the MP3 was already there, so the window shows "Converting to MP3..." for a moment before "Already there".
+
+## Errors
+- With the library's defaults (no `ignoreerrors`), a failure raises `yt_dlp.utils.DownloadError`; its text starts with "ERROR: " (read in `trouble()`). A missing file on the test server gives a message with "404" in it (measured).
+
+## Sites
+- **Reddit fails without browser impersonation** (2026-11-11, the user's test of step A; reproduced with the yt-dlp command alone, so not our app):
+  - What happens (read in extractor/reddit.py, seen in the warnings): yt-dlp first asks old.reddit.com for an anonymous session cookie and gets "HTTP Error 403: Blocked". Its fallback asks Reddit's newer site with browser impersonation, but `yt-dlp --list-impersonate-targets` shows every target "unavailable" (needs the `curl_cffi` package, not installed). The post's JSON then comes back as a block page, which yt-dlp reports as "Account authentication is required. Use --cookies-from-browser ...".
+  - Possible ways out: the `curl-cffi` extra (`yt-dlp[default,curl-cffi]`, which yt-dlp's README calls "recommended"; makes its requests look like Chrome's), or signing in with browser cookies (on the "Later" list).
+  - Not tested: whether `curl_cffi` fixes it. Installing it from a Claude session was refused by Claude Code's safety check as getting around a bot check, so that is the user's decision.
+  - The point of the Reddit test (ffmpeg joins separate video and sound) was already covered by the YouTube MP4 test, which showed "Joining video and audio...".
+
+## Timing (measured 2026-11-11)
+- `import yt_dlp`: about 0.8 s.
+- Downloading the 1-second test clip from this PC: 0.4 to 0.7 s per run, most of it yt-dlp starting up; MP3 conversion adds little.
+
+## Sources
+- yt-dlp README, "Embedding yt-dlp": https://github.com/yt-dlp/yt-dlp#embedding-yt-dlp
+- The installed source, as noted above.

@@ -1,7 +1,7 @@
 """Screenshots of the window, for Claude to read.
 
     python tests/gui/screenshots.py           every screen
-    python tests/gui/screenshots.py status    one screen by name
+    python tests/gui/screenshots.py done      one screen by name
 
 Saved to the temp folder (video-downloader-screenshots), never the project;
 prints each file's path. The window pops up on top for a moment.
@@ -10,24 +10,44 @@ prints each file's path. The window pops up on top for a moment.
 import sys
 from collections.abc import Callable
 
-from drive import LINK, SCREENSHOT_DIR, click, open_window, screenshot, type_text
+from drive import (
+    LINK,
+    PROGRESS,
+    SCREENSHOT_DIR,
+    FakeDownload,
+    click,
+    open_window,
+    screenshot,
+    type_text,
+    wait_until,
+)
 
 from video_downloader.app import App
 
 
-def opened(app: App) -> None:
+def opened(app: App, fake: FakeDownload) -> None:
     """As the window opens: empty link box."""
 
 
-def after_download(app: App) -> None:
-    """A link typed and Download clicked: the status line shows a message."""
+def downloading(app: App, fake: FakeDownload) -> None:
+    """A link typed and Download clicked: the bar and the status line show
+    progress."""
     type_text(app.link_entry, LINK)
     click(app.download_button)
+    wait_until(app, lambda: app.status.get() == PROGRESS, "the progress message")
 
 
-SCREENS: dict[str, Callable[[App], None]] = {
+def done(app: App, fake: FakeDownload) -> None:
+    """The download has ended: the status line names the file and folder."""
+    downloading(app, fake)
+    fake.finish()
+    wait_until(app, lambda: not app.busy, "the download to end")
+
+
+SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "start": opened,
-    "status": after_download,
+    "progress": downloading,
+    "done": done,
 }
 
 
@@ -37,11 +57,13 @@ def main(names: list[str]) -> int:
         print(f"Unknown screen: {', '.join(unknown)}. Screens: {', '.join(SCREENS)}")
         return 2
     for name in names or SCREENS:
-        app = open_window()
+        fake = FakeDownload()
+        app = open_window(fake)
         try:
-            SCREENS[name](app)
+            SCREENS[name](app, fake)
             path = screenshot(app, name)
         finally:
+            fake.finish()
             app.root.destroy()
         print(path)
     print(f"Folder: {SCREENSHOT_DIR}")

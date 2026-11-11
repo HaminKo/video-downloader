@@ -6,7 +6,7 @@ Built in To do 2 (2026-11-11). Files: tests/gui/drive.py (open the window, type,
 - **Starting the window:** `video_downloader.app.start()`, the same function `main()` uses, so the window is DPI-aware like the user's. Then `-topmost`, so nothing covers it for the screenshot.
 - **Input:** Tk's own `event_generate` in the same process: `<KeyPress>` with a key name (`keysym`) per character, and `<Enter>`, `<ButtonPress-1>`, `<ButtonRelease-1>` in the middle of a button. These run the same Tk bindings a real key press or click runs. The real mouse doesn't move.
 - **Checks:** texts and `StringVar` values, and widget edges from `winfo_rootx/rooty/width/height` (inside the window, link box not overlapping the button, link box at least half the window's width). No pixel comparisons.
-- **Sizes:** the size the window opens with (also its smallest, 480 px wide) and 1200 px wide.
+- **Sizes:** the size the window opens with (also its smallest: 600 px at normal size, scaled with the DPI, so 900 px on this PC since To do 3; 480 px before) and 1200 px wide.
 - **Screenshots:** Pillow's `ImageGrab.grab(bbox=..., all_screens=True)`, with the box from `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)`: the visible window with its title bar. `GetWindowRect` would add Windows 10/11's invisible resize border (general knowledge, not tried here). Pillow 13 also has `ImageGrab.grab(window=hwnd)`, not tried.
 - **Plain `pytest` skips the GUI test:** the file is `window_gui.py`, and pytest only collects `test_*.py` and `*_test.py` on its own. A file named on the command line is collected anyway, with pytest's readable assert messages.
 
@@ -38,7 +38,7 @@ Built in To do 2 (2026-11-11). Files: tests/gui/drive.py (open the window, type,
 - Key presses go to the widget with the keyboard focus, not to the widget `event_generate` is called on. drive.py's `press()` focuses the widget first. A hidden (withdrawn) window gets no key presses at all (tkinter-tests.md).
 - Only letters and digits work as their own key names. Other characters need Tk's name (`colon`, `slash`, ...): `KEY_NAMES` in drive.py has all printable ASCII characters. All 94 printable ASCII characters typed correctly (2026-11-11). Anything else (`é`) stops the test with "add its Tk key name to KEY_NAMES".
 - The filter tag goes on every widget when the window opens, and again before each key press and click, so widgets added later (To do 3 may add some) get it too. Between being created and the next key press or click, a new widget still takes real input.
-- The window opens at its smallest size, 480 px wide (484 with its frame). At this PC's 150% scaling, that is about 320 px at normal size: the link box shows about 30 characters of a link (seen in the screenshot). (First written as 200% and 240 px: wrong, see the correction above.) Widening it is part of To do 3.
+- The window opens at its smallest size, 480 px wide (484 with its frame). At this PC's 150% scaling, that is about 320 px at normal size: the link box shows about 30 characters of a link (seen in the screenshot). (First written as 200% and 240 px: wrong, see the correction above.) Widened in To do 3: now 900 px (903 with its frame), and the GUI test checks that a typical YouTube link fits in the link box (`xview()` is `(0.0, 1.0)`).
 
 ## Sources
 - Tk `event generate`: https://www.tcl-lang.org/man/tcl8.6/TkCmd/event.htm

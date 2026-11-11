@@ -8,8 +8,10 @@ can't change the result (docs/research/gui-testing.md)."""
 
 import ctypes
 import tempfile
+import threading
+import time
 import tkinter as tk
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from ctypes import wintypes
 from pathlib import Path
@@ -17,11 +19,16 @@ from pathlib import Path
 from PIL import ImageGrab
 
 from video_downloader.app import App, start
+from video_downloader.downloader import Done, Kind, Progress, Report
 
 SCREENSHOT_DIR = Path(tempfile.gettempdir()) / "video-downloader-screenshots"
 
 # The link the GUI test and the screenshots type.
 LINK = "https://www.youtube.com/watch?v=abc_123-XYZ"
+
+# What FakeDownload reports.
+PROGRESS = "Downloading video: 40% of 12 MB"
+VIDEO_TITLE = "Test video"
 
 # Tk's key names for the printable characters that aren't letters or digits.
 KEY_NAMES = {
@@ -80,12 +87,41 @@ def sending() -> Iterator[None]:
         InputState.sending = False
 
 
-def open_window(width: int | None = None) -> App:
+class FakeDownload:
+    """Stands in for yt-dlp, so nothing touches the internet: reports PROGRESS,
+    then waits for finish() before reporting Done."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Kind, Path]] = []
+        self.finished = threading.Event()
+
+    def __call__(self, link: str, kind: Kind, folder: Path, report: Report) -> None:
+        self.calls.append((link, kind, folder))
+        report(Progress(PROGRESS, 40.0))
+        self.finished.wait(timeout=10)
+        report(Done(folder / f"{VIDEO_TITLE}.{kind}", already_there=False))
+
+    def finish(self) -> None:
+        self.finished.set()
+
+
+def wait_until(app: App, condition: Callable[[], bool], what: str) -> None:
+    """Let the window run (it checks for news from the download every 0.1 s)
+    until condition() is true; fail after 5 s."""
+    deadline = time.monotonic() + 5
+    while not condition():
+        assert time.monotonic() < deadline, f"waited 5 s for {what}"
+        app.root.update()
+        time.sleep(0.01)
+
+
+def open_window(download: FakeDownload, width: int | None = None) -> App:
     """Start the window as main() does, on top, with the link box focused.
 
+    download: the fake that stands in for yt-dlp.
     width: in screen pixels; None keeps the size the window opens with.
     """
-    app = start()
+    app = start(download)
     root = app.root
     try:
         root.attributes("-topmost", True)
