@@ -5,7 +5,7 @@ A small Windows app: paste a link to a video and it saves the video to your PC a
 It does not download from DRM-protected services (Netflix, Disney+, Spotify and the like).
 
 ## Status
-Downloading works. When a download fails, the window shows yt-dlp's own message for now; plainer messages come next. What comes next is in [docs/todo.md](docs/todo.md).
+Downloading works, and when a download fails the window says why in plain words. What comes next is in [docs/todo.md](docs/todo.md).
 
 ## Using it
 Paste a link, choose **Video (MP4)** or **Audio only (MP3)**, and press Download (or Enter). The bar and the line under it show the progress.
@@ -13,7 +13,8 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)**, and press Download
 - MP4s use H.264 video with AAC sound, so they play everywhere (Windows' own player, phones). On YouTube that usually means at most 1080p.
 - A file that is already there isn't downloaded again; the window says so.
 - One download at a time. Closing the window stops a download.
-- A link to a playlist or channel downloads only one video.
+- A link to a playlist or channel downloads only its first video, and the window says so.
+- When a download fails, the line under the bar says why in plain words, in red: not a link, a site or page with no video, no internet, a private or removed video, one that needs signing in, or ffmpeg missing. Anything else shows yt-dlp's own message. yt-dlp's full message is also printed in the terminal the app runs from.
 - Reddit doesn't work yet: Reddit blocks yt-dlp unless it can look like a browser (To do 4 in [docs/todo.md](docs/todo.md)).
 
 ## Install and run

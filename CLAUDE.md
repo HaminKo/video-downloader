@@ -22,7 +22,7 @@ Read by the /build-todo skill. Times measured 2026-11-10 (To do 1).
   - Once per step (slow): `pytest` (3 to 7 s; tests never touch the internet, two download a clip from a web server they start on this PC and need ffmpeg), the GUI test `pytest tests/gui/window_gui.py` (5 to 7 s; a fake download stands in for yt-dlp) and `pyright` (1-2 s). Times measured 2026-11-11 (To do 3, step A).
   - pytest runs with `--capture=sys` (set in pyproject.toml): the default breaks a second tkinter window (docs/research/tkinter-tests.md).
   - The GUI test opens the real window on top and takes the keyboard focus; real keys and clicks in it are ignored meanwhile. A UI change gets a step in it (tests/gui/window_gui.py; helpers in tests/gui/drive.py). How it works: docs/research/gui-testing.md.
-  - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 290 tokens each (estimate, 903 × 237 px). A new screen gets an entry in `SCREENS` in that file.
+  - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done, error). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 290 tokens each (estimate, 903 × 237 px). A new screen gets an entry in `SCREENS` in that file.
 - **Docs to update when behaviour changes:** README.md (headline features, install and run steps, Credits) and any help text in the app. When a README section grows past about a screen, move it into docs/NAME.md and link it from the README.
 - **Must keep working:** Enter in the link box and the Download button both start a download (checked by the GUI test).
 - **Review checklist:** none yet: the built-in code-review skill. Add docs/review.md once the project has its own rules to check.
@@ -37,6 +37,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - Deno (yt-dlp's default) is the JavaScript runtime for YouTube, not Node.
 - ffmpeg is winget's `yt-dlp.FFmpeg` (yt-dlp's own build).
 - MP4 and MP3 use yt-dlp's own `-t mp4` (H.264 + AAC, plays everywhere) and `-t mp3` presets.
+- Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.
 - The GUI test drives the window with Tk's own key and click events in the same process, never real OS input; screenshots with Pillow (development only).
 
 ## Project docs

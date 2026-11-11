@@ -23,6 +23,7 @@ from drive import (
 )
 
 from video_downloader.app import App
+from video_downloader.downloader import FFMPEG_MISSING, Failed
 
 
 def opened(app: App, fake: FakeDownload) -> None:
@@ -44,10 +45,19 @@ def done(app: App, fake: FakeDownload) -> None:
     wait_until(app, lambda: not app.busy, "the download to end")
 
 
+def failed(app: App, fake: FakeDownload) -> None:
+    """The download failed: a plain message in dark red (the longest one, so
+    it wraps)."""
+    downloading(app, fake)
+    fake.finish(Failed(FFMPEG_MISSING))
+    wait_until(app, lambda: not app.busy, "the download to end")
+
+
 SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "start": opened,
     "progress": downloading,
     "done": done,
+    "error": failed,
 }
 
 

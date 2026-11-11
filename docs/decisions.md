@@ -2,6 +2,15 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-11: Plain messages when a download fails, found by matching yt-dlp's error text; ffmpeg checked before starting
+- **Reason:** yt-dlp's messages are long and talk about command-line options the app doesn't have. A private, removed or sign-in-only video is the same error type in yt-dlp; only the text differs, so the app matches text patterns in order (`PLAIN_MESSAGES` in downloader.py) and shows yt-dlp's own text for anything else. If a yt-dlp update changes a text, that case falls back to yt-dlp's text, no worse than before. Without ffmpeg, yt-dlp doesn't fail on an MP4 but quietly picks a worse file, so the app checks for ffmpeg first (docs/research/yt-dlp-library.md "Errors").
+- **Who decided:** the user, on Claude's suggestions (To do 3, step B), including the wording of each message.
+- **Rejected:**
+  - matching yt-dlp's error types: they can't tell private from removed
+  - showing yt-dlp's text under the plain message: long, and it still goes to the terminal
+  - letting yt-dlp report a missing ffmpeg: for MP4 it doesn't, it only warns
+- **Also chosen, on Claude's suggestions:** failures in dark red; two extra cases (country block, YouTube's bot check). Added after the code review: YouTube's rate limit gets its own message, since the bare word "unavailable" also matched a passing server error (503).
+
 ## 2026-11-11: MP4 that plays everywhere (H.264 + AAC), MP3 via ffmpeg: yt-dlp's own `-t mp4` and `-t mp3` presets
 - **Reason:** Windows' own player and phones open H.264 MP4s; AV1 and VP9 often don't. yt-dlp ships these settings as presets (yt-dlp 2026.10.26: `-t mp4` sorts formats by `vcodec:h264,lang,quality,res,fps,hdr:12,acodec:aac` and merges into MP4; `-t mp3` takes the best audio and converts it with ffmpeg), so we copy theirs instead of inventing our own. On YouTube this usually means at most 1080p.
 - **Who decided:** the user, on Claude's suggestion (To do 3).

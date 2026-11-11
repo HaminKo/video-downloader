@@ -1,16 +1,13 @@
 # To do
 
 ## Where we are
-- Now: To do 3, step B (clear messages when it fails)
-- Next: To do 4
+- Now: To do 4 (Reddit downloads)
+- Next: no other to-dos open
 - Updated: 2026-11-11
 
 Next number: 5
 
 ## To do
-
-### 3. Download from a link (medium): "paste a link, get the video"
-In its own file, with answers and a Progress list: [docs/todo/03-download.md](todo/03-download.md). Two steps: A downloading works (done), B clear messages when it fails.
 
 ### 4. Reddit downloads (small): "add something to make Reddit work later"
 - **Problem:** Reddit links fail with "Account authentication is required", also for a post in a public subreddit (the one tested). Reddit blocks yt-dlp unless its requests look like a browser's. yt-dlp can do that ("impersonation"), but only with the `curl_cffi` package, which isn't installed. Example, from To do 3's test: https://www.reddit.com/r/Asmongold/comments/1xsyq9n/meanwhile_in_us_thatll_be_36367/ . It fails with the yt-dlp command alone, so it isn't our app. YouTube and X work.

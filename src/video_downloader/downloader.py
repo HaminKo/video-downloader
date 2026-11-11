@@ -6,6 +6,8 @@ or Failed.
 """
 
 import copy
+import re
+import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -13,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yt_dlp
-from yt_dlp.utils import DownloadError
+from yt_dlp.utils import DownloadError, UnavailableVideoError
 
 if TYPE_CHECKING:
     # yt-dlp's settings as pyright knows them (its bundled yt-dlp stubs).
@@ -71,6 +73,60 @@ STEP_TEXTS = {
     "ExtractAudio": "Converting to MP3...",
 }
 
+# What the window says when a download fails.
+NOT_A_LINK = (
+    "That isn't a link. Copy the video's address from your browser and paste it here."
+)
+NO_VIDEO = (
+    "No video found at this link. The site may not be supported, "
+    "or the page has no video."
+)
+NO_CONNECTION = "Couldn't reach the site. Check your internet connection and the link."
+PRIVATE = "This video is private, so it can't be downloaded."
+NOT_AVAILABLE = (
+    "This video isn't available. It may have been removed, or the link may be wrong."
+)
+SIGN_IN = (
+    "This video needs you to be signed in (for example, it's age-restricted "
+    "or for members only). The app can't sign in yet."
+)
+REDDIT = "Reddit blocks downloads from this app for now."
+BOT_CHECK = "YouTube wants to check you're not a bot. Try again later."
+RATE_LIMITED = "YouTube is limiting downloads for now. Try again in about an hour."
+COUNTRY = "This video isn't available in your country."
+FFMPEG_MISSING = (
+    "ffmpeg is missing; it's needed for MP4 and MP3. Install it with "
+    "winget install --id yt-dlp.FFmpeg -e, then restart VS Code (or the "
+    "terminal) and the app."
+)
+
+# Patterns in yt-dlp's error texts, and what the window says instead. The
+# first match wins, so the order matters: a private video's text also says
+# "sign in", and every sign-in text ends in yt-dlp's "--cookies" hint. The
+# texts, measured and read in the source: docs/research/yt-dlp-library.md
+# "Errors". Anything else shows yt-dlp's own text.
+PLAIN_MESSAGES = [
+    (r"is not a valid URL", NOT_A_LINK),
+    (r"Unsupported URL:", NO_VIDEO),
+    (r"(ffmpeg|ffprobe) not found|ffmpeg is not installed", FFMPEG_MISSING),
+    (
+        r"TransportError|getaddrinfo failed|Failed to resolve"
+        r"|Failed to establish a new connection|timed out",
+        NO_CONNECTION,
+    ),
+    (r"\[Reddit\].*Account authentication is required", REDDIT),
+    (r"Private video|This video is private", PRIVATE),
+    (r"not a bot", BOT_CHECK),
+    (r"rate-limited", RATE_LIMITED),
+    (r"not available from your location|available in your country", COUNTRY),
+    (r"sign in|log ?in|--cookies|members-only|registered users", SIGN_IN),
+    (
+        r"video is unavailable|video unavailable|has been removed"
+        r"|no longer available|does not exist|HTTP Error (404|410)",
+        NOT_AVAILABLE,
+    ),
+]
+
 
 @dataclass(frozen=True)
 class Progress:
@@ -82,6 +138,7 @@ class Progress:
 class Done:
     path: Path
     already_there: bool  # the file was already there, so nothing was downloaded
+    playlist: bool = False  # a playlist link: only its first video was saved
 
 
 @dataclass(frozen=True)
@@ -132,6 +189,11 @@ def download(link: str, kind: Kind, folder: Path, report: Report) -> None:
         if status["status"] == "started" and text:
             report(Progress(text, None))
 
+    # Without ffmpeg, yt-dlp doesn't fail on an MP4: it quietly picks a worse
+    # file that needs no joining (docs/research/yt-dlp-library.md "Errors").
+    if shutil.which("ffmpeg") is None:
+        report(Failed(FFMPEG_MISSING))
+        return
     settings = options(kind, folder)
     settings["progress_hooks"] = [on_progress]
     settings["postprocessor_hooks"] = [on_step]
@@ -143,16 +205,36 @@ def download(link: str, kind: Kind, folder: Path, report: Report) -> None:
         # ffmpeg report only "finished" (docs/research/yt-dlp-library.md).
         there_before = {path.name for path in folder.iterdir()}
         with yt_dlp.YoutubeDL(settings) as ydl:
-            ydl.download([link])
-    except DownloadError as error:
-        report(Failed(str(error).removeprefix("ERROR: ")))
+            # Not ydl.download(), which doesn't say whether it was a playlist.
+            # It did turn UnavailableVideoError (an OSError while saving, such
+            # as a full disk) into a DownloadError; the next line does that now.
+            info = ydl.extract_info(link)
+    except (DownloadError, UnavailableVideoError) as error:
+        report(Failed(plain_message(str(error))))
     except Exception as error:  # the window must always hear that it ended
         report(Failed(f"Something went wrong: {error}"))
     else:
         if saved:
-            report(Done(saved[-1], already_there=saved[-1].name in there_before))
+            report(
+                Done(
+                    saved[-1],
+                    already_there=saved[-1].name in there_before,
+                    playlist=info.get("_type") == "playlist"
+                    and info.get("playlist_count") != 1,
+                )
+            )
         else:
             report(Failed("Nothing was downloaded from this link."))
+
+
+def plain_message(error: str) -> str:
+    """What the window says for yt-dlp's error text: a plain message for the
+    failures met most often, otherwise yt-dlp's own text."""
+    text = error.removeprefix("ERROR: ")
+    for pattern, message in PLAIN_MESSAGES:
+        if re.search(pattern, text, re.IGNORECASE):
+            return message
+    return text
 
 
 def progress(status: Mapping[str, Any]) -> Progress:

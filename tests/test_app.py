@@ -6,8 +6,10 @@ from pathlib import Path
 import pytest
 
 from video_downloader.app import (
+    FAILED_COLOR,
     LOOKING_UP,
     PASTE_A_LINK,
+    PLAYLIST_NOTE,
     TITLE,
     WIDTH,
     App,
@@ -120,8 +122,15 @@ def test_failure_shows_the_message(app: App, fake: FakeDownload) -> None:
     app.download_button.invoke()
     wait_until_done(app)
     assert app.status.get() == "No."
+    assert str(app.status_label.cget("foreground")) == FAILED_COLOR
     assert app.progress_bar.cget("value") == 0
     assert not app.mp3_button.instate(["disabled"])
+
+    # The next message is in the normal color again.
+    app.download_button.invoke()
+    assert app.status.get() == LOOKING_UP
+    assert str(app.status_label.cget("foreground")) == ""
+    wait_until_done(app)
 
 
 def test_done_message_names_the_folder_from_home() -> None:
@@ -130,6 +139,9 @@ def test_done_message_names_the_folder_from_home() -> None:
     assert done_message(Done(path, False)) == f"Done: Clip.mp4 (in {folder})"
     assert done_message(Done(path, True)) == (
         f"Already there, not downloaded again: Clip.mp4 (in {folder})"
+    )
+    assert done_message(Done(path, False, playlist=True)) == (
+        f"Done: Clip.mp4 (in {folder}). {PLAYLIST_NOTE}"
     )
 
 

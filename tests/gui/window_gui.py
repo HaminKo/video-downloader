@@ -23,8 +23,8 @@ from drive import (
     wait_until,
 )
 
-from video_downloader.app import TITLE, App
-from video_downloader.downloader import Kind
+from video_downloader.app import FAILED_COLOR, TITLE, App
+from video_downloader.downloader import FFMPEG_MISSING, Failed, Kind
 
 # The window's sizes, in screen pixels: None is the size it opens with, which
 # is also its smallest.
@@ -51,8 +51,8 @@ def wait_for_progress(app: App, after: str) -> None:
     wait_until(app, lambda: app.status.get() == PROGRESS, f"progress after {after}")
 
 
-def finish(app: App, fake: FakeDownload) -> None:
-    fake.finish()
+def finish(app: App, fake: FakeDownload, failure: Failed | None = None) -> None:
+    fake.finish(failure)
     wait_until(app, lambda: not app.busy, "the download to end")
 
 
@@ -88,6 +88,23 @@ def test_mp3_choice_reaches_the_download(app: App, fake: FakeDownload) -> None:
     assert fake.calls[0][1] == Kind.MP3
     finish(app, fake)
     assert app.status.get().startswith(f"Done: {VIDEO_TITLE}.mp3"), app.status.get()
+
+
+def test_failure_shows_a_plain_message_in_red(app: App, fake: FakeDownload) -> None:
+    type_text(app.link_entry, LINK)
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "Enter in the link box")
+    finish(app, fake, Failed(FFMPEG_MISSING))  # the longest plain message
+    assert app.status.get() == FFMPEG_MISSING
+    assert str(app.status_label.cget("foreground")) == FAILED_COLOR
+    assert_inside_window(app.status_label)
+    assert app.progress_bar.cget("value") == 0
+    assert not app.download_button.instate(["disabled"]), "can try again"
+
+    click(app.download_button)  # the next try shows progress in the normal color
+    wait_for_progress(app, "clicking Download again")
+    assert str(app.status_label.cget("foreground")) == ""
+    finish(app, fake)
 
 
 def test_everything_fits_the_window(app: App) -> None:

@@ -15,6 +15,13 @@ from video_downloader.downloader import Done, Event, Failed, Kind, Progress, Rep
 TITLE = "Video Downloader"
 PASTE_A_LINK = "Paste a link to a video first."
 LOOKING_UP = "Looking up the video..."
+PLAYLIST_NOTE = (
+    "The link is a playlist: the app only takes its first video "
+    "(playlists aren't supported yet)."
+)
+
+# Failures are shown in dark red, everything else in the normal text color.
+FAILED_COLOR = "#a00000"
 
 # The width the window opens with, which is also its smallest, in pixels at
 # 100% display scaling (96 DPI). window_width() scales it to the display.
@@ -101,11 +108,11 @@ class App:
             return
         link = self.link.get().strip()
         if not link:
-            self.status.set(PASTE_A_LINK)
+            self.show_status(PASTE_A_LINK)
             return
         self.set_busy(True)
         self.show_progress(None)
-        self.status.set(LOOKING_UP)
+        self.show_status(LOOKING_UP)
         threading.Thread(
             target=self.run_download,
             args=(link, Kind(self.kind.get()), self.folder, self.events.put),
@@ -119,14 +126,14 @@ class App:
         while not self.events.empty():
             match self.events.get():
                 case Progress(text, percent):
-                    self.status.set(text)
+                    self.show_status(text)
                     self.show_progress(percent)
                 case Done() as done:
-                    self.status.set(done_message(done))
+                    self.show_status(done_message(done))
                     self.show_progress(100)
                     self.set_busy(False)
                 case Failed(message):
-                    self.status.set(message)
+                    self.show_status(message, failed=True)
                     self.show_progress(0)
                     self.set_busy(False)
         if self.busy:
@@ -160,6 +167,11 @@ class App:
         if root.winfo_ismapped() and root.winfo_height() != root.winfo_reqheight():
             root.geometry(f"{root.winfo_width()}x{root.winfo_reqheight()}")
 
+    def show_status(self, text: str, failed: bool = False) -> None:
+        """Show `text` under the bar: a failure in dark red."""
+        self.status.set(text)
+        self.status_label.configure(foreground=FAILED_COLOR if failed else "")
+
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
         state = ["disabled"] if busy else ["!disabled"]
@@ -183,8 +195,10 @@ def done_message(done: Done) -> str:
     if folder.is_relative_to(Path.home()):
         folder = folder.relative_to(Path.home())
     if done.already_there:
-        return f"Already there, not downloaded again: {done.path.name} (in {folder})"
-    return f"Done: {done.path.name} (in {folder})"
+        message = f"Already there, not downloaded again: {done.path.name} (in {folder})"
+    else:
+        message = f"Done: {done.path.name} (in {folder})"
+    return f"{message}. {PLAYLIST_NOTE}" if done.playlist else message
 
 
 def window_width(root: tk.Misc) -> int:
