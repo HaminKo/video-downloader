@@ -44,7 +44,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 ## Project docs
 - README.md: what it is, install and run, Credits.
 - docs/local.md: this PC's paths and copy-ready commands (gitignored).
-- docs/todo.md: to-dos and "Where we are" (with docs/todo/ for to-dos in their own file).
+- docs/todo.md: the list and "Where we are"; docs/todo/: one file per to-do.
 - docs/archive/: finished to-dos' files, read only when a to-do names one.
 - docs/decisions.md: decisions with reasons.
 - docs/research/: one file per topic (start with prior-art.md).

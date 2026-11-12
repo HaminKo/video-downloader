@@ -11,21 +11,21 @@ Next number: 12. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- To do 5: Signing in (medium): docs/todo/05-signing-in.md
+- To do 5: Signing in (medium; user 2026-11-11): docs/todo/05-signing-in.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
 
-- To do 6: Choosing quality and formats (medium): docs/todo/06-quality-and-formats.md
-- To do 7: Subtitles (small): docs/todo/07-subtitles.md
-- To do 8: Playlists and whole channels (medium): docs/todo/08-playlists.md
-- To do 9: Queue and history (medium): docs/todo/09-queue-and-history.md
-- To do 10: Edge button (large): docs/todo/10-edge-button.md
+- To do 6: Choosing quality and formats (medium; user 2026-11-11): docs/todo/06-quality-and-formats.md
+- To do 7: Subtitles (small; user 2026-11-11): docs/todo/07-subtitles.md
+- To do 8: Playlists and whole channels (medium; user 2026-11-11): docs/todo/08-playlists.md
+- To do 9: Queue and history (medium; user 2026-11-11): docs/todo/09-queue-and-history.md
+- To do 10: Edge button (large; user 2026-11-11): docs/todo/10-edge-button.md
 
 ### Someday
 Everything else, unordered (grouped by area once it grows). A Someday to-do moves up only when it starts to bug the user.
 
-- To do 11: An .exe installer (large): docs/todo/11-installer.md
+- To do 11: An .exe installer (large; user 2026-11-11): docs/todo/11-installer.md
 
 ## Later, only if the user asks
 - Nothing here now (all moved into the list above on 2026-11-11).
