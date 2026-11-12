@@ -1,5 +1,5 @@
-"""The main window: a link box, MP4 or MP3, the video quality, a Download
-button, progress and a status line."""
+"""The main window: a link box, MP4 or MP3, the video quality, English
+subtitles, a Download button, progress and a status line."""
 
 import queue
 import sys
@@ -19,6 +19,7 @@ PLAYLIST_NOTE = (
     "The link is a playlist: the app only takes its first video "
     "(playlists aren't supported yet)."
 )
+NO_SUBTITLES = "No English subtitles found."
 
 # The video quality choices and their limit as the downloader takes it (720
 # for 720p). "Best" (None) is the best that plays everywhere: 1080p on
@@ -36,8 +37,9 @@ WIDTH = 600
 # How often the window checks for news from the download, in milliseconds.
 CHECK_EVERY = 100
 
-# link, MP4 or MP3, folder, report, the quality limit (None: the best)
-type Download = Callable[[str, Kind, Path, Report, int | None], None]
+# link, MP4 or MP3, folder, report, the quality limit (None: the best),
+# English subtitles
+type Download = Callable[[str, Kind, Path, Report, int | None, bool], None]
 
 
 class App:
@@ -104,17 +106,25 @@ class App:
         ]
         for column, button in enumerate(self.quality_buttons, start=1):
             button.grid(row=0, column=column, padx=(0, 16))
+
+        # Saved as a file of their own next to the video; greyed out while
+        # MP3 is chosen.
+        self.subtitles = tk.BooleanVar(value=False)
+        self.subtitles_box = ttk.Checkbutton(
+            frame, text="English subtitles", variable=self.subtitles
+        )
+        self.subtitles_box.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
         self.kind.trace_add("write", lambda *_: self.update_states())
 
         self.progress_bar = ttk.Progressbar(frame, maximum=100)
-        self.progress_bar.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.progress_bar.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
         # Progress, the result and error messages. yt-dlp's messages can be
         # long: they wrap to the window's width instead of widening it, and
         # the window grows taller to show every line.
         self.status = tk.StringVar()
         self.status_label = ttk.Label(frame, textvariable=self.status, justify="left")
-        self.status_label.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self.status_label.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         self.status_label.bind("<Configure>", self.wrap_status)
         self.status.trace_add("write", lambda *_: self.fit_height_soon())
         root.resizable(True, False)  # fit_height() sets the height
@@ -141,7 +151,9 @@ class App:
                 Kind(self.kind.get()),
                 self.folder,
                 self.events.put,
-                QUALITIES[self.quality.get()],  # the downloader ignores it for MP3
+                # The downloader ignores these two for MP3.
+                QUALITIES[self.quality.get()],
+                self.subtitles.get(),
             ),
             daemon=True,  # closing the window stops the download
         ).start()
@@ -205,12 +217,13 @@ class App:
 
     def update_states(self) -> None:
         """Grey out what can't be used now: every choice and the Download
-        button during a download, the video quality while MP3 is chosen."""
+        button during a download, the video quality and subtitles while MP3
+        is chosen."""
         idle = not self.busy
         video = idle and self.kind.get() == Kind.MP4
         for widget in (self.download_button, self.mp4_button, self.mp3_button):
             widget.state(["!disabled"] if idle else ["disabled"])
-        for widget in (self.quality_label, *self.quality_buttons):
+        for widget in (self.quality_label, *self.quality_buttons, self.subtitles_box):
             widget.state(["!disabled"] if video else ["disabled"])
 
     def show_progress(self, percent: float | None) -> None:
@@ -233,7 +246,12 @@ def done_message(done: Done) -> str:
         message = f"Already there, not downloaded again: {done.path.name} (in {folder})"
     else:
         message = f"Done: {done.path.name} (in {folder})"
-    return f"{message}. {PLAYLIST_NOTE}" if done.playlist else message
+    notes: list[str] = []
+    if done.no_subtitles:
+        notes.append(NO_SUBTITLES)
+    if done.playlist:
+        notes.append(PLAYLIST_NOTE)
+    return " ".join([f"{message}.", *notes]) if notes else message
 
 
 def window_width(root: tk.Misc) -> int:

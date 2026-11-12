@@ -2,6 +2,20 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-12: English subtitles as a separate `Title.en.srt` next to the MP4, from a checkbox
+- **Reason:** Windows' own playback API finds no subtitles inside an MP4 (`mov_text`), while it does find SRT inside an MKV (measured; docs/research/subtitles.md). A separate .srt works in nearly every player; in VLC, the user's player, `Title.en.srt` showed by itself (user's test), so it keeps yt-dlp's name. English only (`subtitleslangs: ["en"]`): real subtitles when the video has them, otherwise automatic ones (on YouTube, possibly its automatic translation). Measured: each of 9 YouTube videos got exactly one English track. YouTube's own srt (`subtitlesformat: "srt/best"`), because its automatic captions as vtt show every line twice; other sites' vtt is converted to srt by ffmpeg. A video without English subtitles still downloads, and the window says "No English subtitles found."
+- **Who decided:** the user, on Claude's suggestions (To do 7).
+- **Rejected:**
+  - subtitles inside the MP4 (yt-dlp's `--embed-subs`, the to-do's first idea): Windows doesn't see them; it also rewrites the whole video once more, and for a video that's already there, it would rewrite the user's file
+  - both inside and a separate file: VLC would list two English tracks
+  - an MKV when subtitles are ticked: Windows reads SRT inside an MKV, but the file would no longer be an MP4, and MKV plays on fewer phones and TVs
+  - yt-dlp's default language choice (no `subtitleslangs`): without English it takes any language, live chat replays included
+  - `en.*`: takes several tracks (en, en-US, en-GB...)
+  - yt-dlp's own text for a failed subtitle download (which fails the whole download), the first plan: the review found that a missing subtitle file (HTTP 404) matched "This video isn't available", which is wrong. It now has its own plain message (measured offline)
+  - downloading the video anyway when its subtitles fail (the review's idea): more code for a failure not seen on YouTube yet; a Someday to-do if it happens
+  - remembering the choice between runs: needs a settings file, as for the quality
+  - grouping the download choices into one object, now that `download()` takes 6 arguments: left for To do 9 (Queue), which has to store the choices per download
+
 ## 2026-11-11: Video quality: Best, 720p or 480p, as a height limit right after H.264 in the mp4 preset's sort
 - **Reason:** a lower quality saves space (on a long YouTube video, measured: 2677 MB at Best, 1513 MB at 720p, 562 MB at 480p). The limit (`res:720`) goes right after `vcodec:h264`, so files still play everywhere, and before `quality`, which YouTube fills from its own labels: after it, the limit does nothing (measured; docs/research/yt-dlp-library.md "Quality"). The choice is a row of radio buttons under MP4/MP3, greyed out while MP3 is chosen.
 - **File names:** a 720p or 480p file gets the choice after its title (`Title (720p).mp4`); Best keeps `Title.mp4`. Found in the review: with the title alone, downloading a video again at 720p to save space said "already there" and kept the big file.

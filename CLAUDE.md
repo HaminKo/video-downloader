@@ -19,7 +19,7 @@ Don't build what's under "Later" in docs/todo.md until asked. Never: anything th
 Read by the /build-todo skill. Times measured 2026-11-10 (To do 1).
 - **Checks** (from the project folder, `.venv` active):
   - After each edit (fast): `ruff check .` and `ruff format .` (0.1 s together).
-  - Once per step (slow): `pytest` (3 to 7 s; tests never touch the internet, two download a clip from a web server they start on this PC and need ffmpeg), the GUI test `pytest tests/gui/window_gui.py` (5 to 7 s; a fake download stands in for yt-dlp) and `pyright` (1-2 s). Times measured 2026-11-11 (To do 3, step A).
+  - Once per step (slow): `pytest` (9 to 14 s; tests never touch the internet, the download tests fetch a clip from a web server they start on this PC and need ffmpeg), the GUI test `pytest tests/gui/window_gui.py` (about 12 s; a fake download stands in for yt-dlp) and `pyright` (1-2 s). Times measured 2026-11-12 (To do 7).
   - pytest runs with `--capture=sys` (set in pyproject.toml): the default breaks a second tkinter window (docs/research/tkinter-tests.md).
   - The GUI test opens the real window on top and takes the keyboard focus; real keys and clicks in it are ignored meanwhile. A UI change gets a step in it (tests/gui/window_gui.py; helpers in tests/gui/drive.py). How it works: docs/research/gui-testing.md.
   - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done, error). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 290 tokens each (estimate, 903 × 237 px). A new screen gets an entry in `SCREENS` in that file.
@@ -40,6 +40,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - ffmpeg is winget's `yt-dlp.FFmpeg` (yt-dlp's own build).
 - MP4 and MP3 use yt-dlp's own `-t mp4` (H.264 + AAC, plays everywhere) and `-t mp3` presets.
 - Video quality: Best, 720p or 480p, as `res:N` right after `vcodec:h264` in the mp4 sort (before `quality`, or it does nothing); 720p and 480p files are named `Title (720p).mp4`.
+- Subtitles: a checkbox (MP4 only), English only, saved as a separate `Title.en.srt` next to the video, never inside the MP4 (Windows can't read them there).
 - Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.
 - The GUI test drives the window with Tk's own key and click events in the same process, never real OS input; screenshots with Pillow (development only).
 

@@ -26,6 +26,7 @@ from video_downloader.downloader import (
     REDDIT,
     REDDIT_REFUSED,
     SIGN_IN,
+    SUBTITLES_FAILED,
     Done,
     Event,
     Failed,
@@ -90,6 +91,30 @@ def test_height_limit_comes_right_after_h264(tmp_path: Path) -> None:
     )
     assert PRESETS[Kind.MP4].get("format_sort") == preset, "the preset was changed"
     assert options(Kind.MP3, tmp_path, 720) == options(Kind.MP3, tmp_path)
+
+
+def test_subtitle_settings_are_yt_dlps_own(tmp_path: Path) -> None:
+    # The same settings as yt-dlp's command line options, so a misspelt
+    # setting (which yt-dlp would quietly ignore) fails here.
+    command = ["--ignore-config", "-t", "mp4"]
+    plain = yt_dlp.parse_options(command).ydl_opts
+    with_subtitles = yt_dlp.parse_options(
+        [*command, "--write-subs", "--write-auto-subs", "--sub-langs", "en",
+         "--sub-format", "srt/best", "--convert-subs", "srt"]
+    ).ydl_opts  # fmt: skip
+    changed: dict[str, Any] = {
+        key: value for key, value in with_subtitles.items() if plain.get(key) != value
+    }
+    changed["postprocessors"] = [
+        step for step in changed["postprocessors"] if step["key"] != "FFmpegConcat"
+    ]
+    settings: dict[str, Any] = dict(options(Kind.MP4, tmp_path, subtitles=True))
+    assert {key: settings.get(key) for key in changed} == changed
+    # Not inside the MP4: Windows' own player doesn't read them there.
+    assert "FFmpegEmbedSubtitle" not in str(settings["postprocessors"])
+    assert "writesubtitles" not in options(Kind.MP4, tmp_path)
+    assert options(Kind.MP3, tmp_path, subtitles=True) == options(Kind.MP3, tmp_path)
+    assert len(PRESETS[Kind.MP4].get("postprocessors") or []) == 1, "preset changed"
 
 
 def youtube_like_video() -> Any:  # yt-dlp's _InfoDict, which lists few keys
@@ -279,6 +304,15 @@ ERROR_TEXTS = {
         "VPN or a proxy server (with --proxy) to workaround.",
         COUNTRY,
     ),
+    "subtitles missing (measured 2026-11-12)": (
+        "Unable to download video subtitles for 'en': HTTP Error 404: File not found",
+        SUBTITLES_FAILED,
+    ),
+    "subtitles refused (yt-dlp's text from the source, YouTube's from memory)": (
+        "Unable to download video subtitles for 'en': HTTP Error 429: Too Many "
+        "Requests",
+        SUBTITLES_FAILED,
+    ),
 }
 
 
@@ -354,6 +388,21 @@ def clip_link(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         check=True,
     )  # fmt: skip
     shutil.copy(site / "clip.mp4", site / "clip2.mp4")
+    # Pages with the clip and its subtitles (a <track>, which yt-dlp reads):
+    # in English, and in German only.
+    (site / "clip.vtt").write_text("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n")
+    # A third page's subtitle file isn't there.
+    for page, language, subtitles in (
+        ("subtitled.html", "en", "clip.vtt"),
+        ("german.html", "de", "clip.vtt"),
+        ("broken-subtitles.html", "en", "missing.vtt"),
+    ):
+        (site / page).write_text(
+            "<html><head><title>Subtitled clip</title></head><body>"
+            '<video src="clip.mp4">'
+            f'<track kind="subtitles" src="{subtitles}" srclang="{language}">'
+            "</video></body></html>"
+        )
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0), partial(QuietHandler, directory=str(site))
     )
@@ -366,9 +415,15 @@ def clip_link(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         server.server_close()
 
 
-def run(link: str, kind: Kind, folder: Path, height: int | None = None) -> list[Event]:
+def run(
+    link: str,
+    kind: Kind,
+    folder: Path,
+    height: int | None = None,
+    subtitles: bool = False,
+) -> list[Event]:
     events: list[Event] = []
-    download(link, kind, folder, events.append, height)
+    download(link, kind, folder, events.append, height, subtitles)
     return events
 
 
@@ -400,6 +455,58 @@ def test_another_quality_is_a_file_of_its_own(clip_link: str, tmp_path: Path) ->
     assert smaller[-1] == Done(tmp_path / "clip (720p).mp4", already_there=False)
     again = run(clip_link, Kind.MP4, tmp_path, 720)
     assert again[-1] == Done(tmp_path / "clip (720p).mp4", already_there=True)
+
+
+def test_subtitles_are_saved_next_to_the_video(clip_link: str, tmp_path: Path) -> None:
+    page = clip_link.replace("clip.mp4", "subtitled.html")
+    events = run(page, Kind.MP4, tmp_path, subtitles=True)
+    done = events[-1]
+    assert isinstance(done, Done)
+    assert not done.no_subtitles
+    # The bar shows the video only: it doesn't fill for the subtitles first
+    # and then start again.
+    bars = [e.percent for e in events if isinstance(e, Progress) and e.percent]
+    assert bars, "no progress shown"
+    assert bars == sorted(bars), f"the bar went back: {bars}"
+    srt = done.path.with_suffix(".en.srt")
+    files = sorted(path.name for path in tmp_path.iterdir())
+    assert files == sorted([done.path.name, srt.name])
+    # Converted from the site's vtt by ffmpeg.
+    assert "00:00:00,000 --> 00:00:01,000\nHello" in srt.read_text(encoding="utf-8")
+
+
+def test_subtitles_for_a_video_already_there_leave_it_alone(
+    clip_link: str, tmp_path: Path
+) -> None:
+    page = clip_link.replace("clip.mp4", "subtitled.html")
+    video = run(page, Kind.MP4, tmp_path)[-1]
+    assert isinstance(video, Done)
+    assert [path.name for path in tmp_path.iterdir()] == [video.path.name]
+    written = video.path.stat().st_mtime_ns
+    assert run(page, Kind.MP4, tmp_path, subtitles=True)[-1] == Done(video.path, True)
+    assert video.path.with_suffix(".en.srt").is_file()
+    assert video.path.stat().st_mtime_ns == written, "the video was written again"
+
+
+def test_no_english_subtitles_still_downloads_and_says_so(
+    clip_link: str, tmp_path: Path
+) -> None:
+    page = clip_link.replace("clip.mp4", "german.html")
+    done = run(page, Kind.MP4, tmp_path / "German", subtitles=True)[-1]
+    assert isinstance(done, Done)
+    assert done.no_subtitles
+    assert [path.name for path in done.path.parent.iterdir()] == [done.path.name]
+    # A video with no subtitles at all.
+    plain = run(clip_link, Kind.MP4, tmp_path / "None", subtitles=True)[-1]
+    assert plain == Done(tmp_path / "None" / "clip.mp4", False, no_subtitles=True)
+
+
+def test_subtitles_that_fail_stop_the_download_with_a_plain_message(
+    clip_link: str, tmp_path: Path
+) -> None:
+    page = clip_link.replace("clip.mp4", "broken-subtitles.html")
+    assert run(page, Kind.MP4, tmp_path, subtitles=True) == [Failed(SUBTITLES_FAILED)]
+    assert list(tmp_path.iterdir()) == [], "something was saved"
 
 
 def test_broken_link_gives_a_plain_message(clip_link: str, tmp_path: Path) -> None:

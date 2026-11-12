@@ -1,4 +1,5 @@
-"""Download one video with yt-dlp, as MP4 (in a chosen quality) or MP3.
+"""Download one video with yt-dlp, as MP4 (in a chosen quality, optionally
+with English subtitles) or MP3.
 
 The window runs download() in a background thread. It hears what happens
 only through `report`: Progress events while it runs, then exactly one Done
@@ -127,6 +128,11 @@ FFMPEG_MISSING = (
     "winget install --id yt-dlp.FFmpeg -e, then restart VS Code (or the "
     "terminal) and the app."
 )
+# yt-dlp fetches the subtitles before the video and stops when it can't.
+SUBTITLES_FAILED = (
+    "Couldn't download the subtitles, so nothing was saved. Try again later, "
+    "or untick English subtitles."
+)
 
 # Patterns in yt-dlp's error texts, and what the window says instead. The
 # first match wins, so the order matters: a private video's text also says
@@ -139,6 +145,9 @@ PLAIN_MESSAGES = [
     (r"is not a valid URL", NOT_A_LINK),
     (r"Unsupported URL:", NO_VIDEO),
     (r"(ffmpeg|ffprobe) not found|ffmpeg is not installed", FFMPEG_MISSING),
+    # Before the patterns below: its text ends in the cause (an HTTP 404
+    # would say the video isn't available).
+    (r"Unable to download video subtitles", SUBTITLES_FAILED),
     (
         r"TransportError|getaddrinfo failed|Failed to resolve"
         r"|Failed to establish a new connection|timed out",
@@ -169,6 +178,7 @@ class Done:
     path: Path
     already_there: bool  # the file was already there, so nothing was downloaded
     playlist: bool = False  # a playlist link: only its first video was saved
+    no_subtitles: bool = False  # subtitles were asked for, but none in English
 
 
 @dataclass(frozen=True)
@@ -185,12 +195,15 @@ def default_folder() -> Path:
     return Path.home() / "Downloads" / "Videos"
 
 
-def options(kind: Kind, folder: Path, height: int | None = None) -> "_Params":
+def options(
+    kind: Kind, folder: Path, height: int | None = None, subtitles: bool = False
+) -> "_Params":
     """yt-dlp's settings for one download into `folder`, without the hooks.
 
     height: for MP4, the largest to take (720 for 720p), counted on the
     video's shorter side, so a portrait video's width; with none at or under
     it, the smallest above. None: the best that plays everywhere.
+    subtitles: for MP4, also save English subtitles as `Title.en.srt`.
     """
     settings = copy.deepcopy(PRESETS[kind])
     file_name = FILE_NAME
@@ -202,6 +215,24 @@ def options(kind: Kind, folder: Path, height: int | None = None) -> "_Params":
         sort.insert(sort.index("vcodec:h264") + 1, f"res:{height}")
         settings["format_sort"] = sort
         file_name = FILE_NAME_WITH_QUALITY.format(height=height)
+    if subtitles and kind == Kind.MP4:
+        # A file of their own next to the video: Windows' own player doesn't
+        # read subtitles inside an MP4. Real ones when the video has them,
+        # the site's automatic ones otherwise (docs/research/subtitles.md).
+        settings.update(
+            {
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": ["en"],
+                # YouTube's own srt: its vtt shows each line of automatic
+                # captions twice. Other sites' vtt is converted by ffmpeg.
+                "subtitlesformat": "srt/best",
+            }
+        )
+        settings["postprocessors"] = [
+            {"key": "FFmpegSubtitlesConvertor", "format": "srt", "when": "before_dl"},
+            *(settings.get("postprocessors") or []),
+        ]
     settings.update(
         {
             "paths": {"home": str(folder)},
@@ -228,14 +259,23 @@ def options(kind: Kind, folder: Path, height: int | None = None) -> "_Params":
 
 
 def download(
-    link: str, kind: Kind, folder: Path, report: Report, height: int | None = None
+    link: str,
+    kind: Kind,
+    folder: Path,
+    report: Report,
+    height: int | None = None,
+    subtitles: bool = False,
 ) -> None:
     """Download the video at `link` into `folder` (made if missing); `height`
-    as in options()."""
+    and `subtitles` as in options()."""
     saved: list[Path] = []
 
     def on_progress(status: Mapping[str, Any]) -> None:
-        if status["status"] == "downloading":
+        # Not the subtitles' own download, a few KB before the video's: the
+        # bar would fill and start again. yt-dlp gives every video and audio
+        # format a format_id, subtitles none (docs/research/subtitles.md).
+        info = status.get("info_dict") or {}
+        if status["status"] == "downloading" and "format_id" in info:
             report(progress(status))
 
     def on_step(status: Mapping[str, Any]) -> None:
@@ -250,7 +290,7 @@ def download(
         return
     signed_in = False
     try:
-        settings = options(kind, folder, height)  # reads the sign-in file
+        settings = options(kind, folder, height, subtitles)  # reads the sign-in file
         signed_in = "cookiefile" in settings
         settings["progress_hooks"] = [on_progress]
         settings["postprocessor_hooks"] = [on_step]
@@ -271,12 +311,18 @@ def download(
         report(Failed(f"Something went wrong: {error}"))
     else:
         if saved:
+            video = saved[-1]
             report(
                 Done(
-                    saved[-1],
-                    already_there=saved[-1].name in there_before,
+                    video,
+                    already_there=video.name in there_before,
                     playlist=info.get("_type") == "playlist"
                     and info.get("playlist_count") != 1,
+                    # yt-dlp's name for them; it only warns in the terminal
+                    # when there are none in English.
+                    no_subtitles=subtitles
+                    and kind == Kind.MP4
+                    and not video.with_suffix(".en.srt").is_file(),
                 )
             )
         else:

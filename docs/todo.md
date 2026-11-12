@@ -1,17 +1,17 @@
 # To do
 
 ## Where we are
-- Now: To do 7 (Subtitles)
+- Now: To do 12 (Play and Show in folder)
 - Next: To do 8, 9, 10
-- Updated: 2026-11-11
+- Updated: 2026-11-12
 
 ## To do
-Next number: 12. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
+Next number: 13. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
 
 ### Now
 The one to-do being built.
 
-- To do 7: Subtitles (small; user 2026-11-11): docs/todo/07-subtitles.md
+- To do 12: Play and Show in folder buttons (small; user 2026-11-12): docs/todo/12-play-and-show-in-folder.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.

@@ -62,7 +62,7 @@ def test_enter_in_link_box_starts_download(app: App, fake: FakeDownload) -> None
     assert app.link.get() == LINK, "the typed link should be in the link box"
     press(app.link_entry, "Return")
     wait_for_progress(app, "Enter in the link box")
-    assert fake.calls == [(LINK, Kind.MP4, app.folder, None)]
+    assert fake.calls == [(LINK, Kind.MP4, app.folder, None, False)]
     finish(app, fake)
 
 
@@ -103,10 +103,30 @@ def test_quality_choice_reaches_the_download(app: App, fake: FakeDownload) -> No
     type_text(app.link_entry, LINK)
     press(app.link_entry, "Return")
     wait_for_progress(app, "choosing 720p and pressing Enter")
-    assert fake.calls == [(LINK, Kind.MP4, app.folder, 720)]
+    assert fake.calls == [(LINK, Kind.MP4, app.folder, 720, False)]
     assert best.instate(["disabled"]), "no other quality during a download"
     finish(app, fake)
     assert not best.instate(["disabled"])
+
+
+def test_subtitles_choice_reaches_the_download(app: App, fake: FakeDownload) -> None:
+    box = app.subtitles_box
+    click(app.mp3_button)
+    assert box.instate(["disabled"]), "no subtitles for MP3"
+    click(box)
+    assert not app.subtitles.get(), "a greyed-out box was ticked"
+    click(app.mp4_button)
+    click(box)
+    assert app.subtitles.get(), "clicking the box should tick it"
+    type_text(app.link_entry, LINK)
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "ticking subtitles and pressing Enter")
+    assert fake.calls == [(LINK, Kind.MP4, app.folder, None, True)]
+    assert box.instate(["disabled"]), "no other choice during a download"
+    finish(app, fake)
+    assert not box.instate(["disabled"])
+    click(box)
+    assert not app.subtitles.get(), "clicking again should untick it"
 
 
 def test_failure_shows_a_plain_message_in_red(app: App, fake: FakeDownload) -> None:
@@ -134,6 +154,7 @@ def test_everything_fits_the_window(app: App) -> None:
         app.mp3_button,
         app.quality_label,
         *app.quality_buttons,
+        app.subtitles_box,
         app.progress_bar,
     ):
         assert_inside_window(widget)

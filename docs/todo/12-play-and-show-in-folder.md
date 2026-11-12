@@ -1,0 +1,12 @@
+# To do 12: Play and Show in folder buttons (small): "a button to open up the folder with the download file, or open up the file directly after downloading"
+
+- **Goal:** after a download, one click plays the file or shows it in Explorer, instead of finding it in Downloads\Videos by hand. Example: download a YouTube video with English subtitles, click Play: it opens in VLC (the user's default player) with its subtitles; click Show in folder: Explorer opens with the MP4 selected.
+- **Read first:** `App.__init__`, `check_events()` (the `Done` case), `update_states()` and `done_message()` in app.py; `Done.path` in downloader.py; tests/gui/drive.py (`FakeDownload`) and tests/gui/screenshots.py (the "done" screen); docs/decisions.md To do 3 ("no Open folder button", decided then to keep the first version small); docs/todo/09-queue-and-history.md, question (b): its history will reuse Show in folder.
+- **Approach:** two buttons, agreed with the user (2026-11-12):
+  - **Play** opens the last finished file in its default app (`os.startfile`); usable once a download is done, also when the file was already there. VLC loads the `.srt` next to it by itself.
+  - **Show in folder** opens Explorer with that file selected (`explorer /select,<path>`); before any download it opens Downloads\Videos.
+  - Nothing opens by itself after a download: a player popping up unasked gets annoying, worse with playlists (To do 8).
+  - The window takes what opens files as a parameter, like `download`, so the tests pass a fake and nothing really opens.
+  - Check while building: a path with spaces and commas through `explorer /select,`; explorer.exe returns exit code 1 even when it worked (so no `check=True`); what to do when Downloads\Videos doesn't exist yet.
+- **Ask the user:** (a) where do the buttons go? Suggested: a row under the status line, on the left. (b) after a failed download, does Play still play the previous file? Suggested: no, greyed out until the next finished download; Show in folder still opens the folder. (c) greyed out during a download? Suggested: yes, like the other choices.
+- **Test:** Claude: app tests with a fake opener (Play greyed out at start, enabled after Done, given the file's path; Show in folder given the folder before a download and the file after); a GUI test step that clicks both; the "done" screenshot. User: Play opens a downloaded video in VLC with its subtitles; Show in folder opens Explorer with the file selected; before any download, Show in folder opens the Videos folder.

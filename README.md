@@ -8,10 +8,11 @@ It does not download from DRM-protected services (Netflix, Disney+, Spotify and 
 Downloading works, and when a download fails the window says why in plain words. Reddit works once you've signed in ([Signing in](docs/signing-in.md)). What comes next is in [docs/todo.md](docs/todo.md).
 
 ## Using it
-Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, its quality, then press Download (or Enter). The bar and the line under it show the progress.
+Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, its quality and whether you want English subtitles, then press Download (or Enter). The bar and the line under it show the progress.
 - Files go to the **Videos** folder inside your Downloads folder, named after the video's title.
 - MP4s use H.264 video with AAC sound, so they play everywhere (Windows' own player, phones).
 - **Video quality:** **Best** is the best that plays everywhere, which on YouTube means at most 1080p. **720p** and **480p** save space: on a long YouTube video, 720p was a little over half the size of Best, and 480p about a fifth. A video with nothing that small comes in its smallest size above it. A 720p or 480p file has the quality after its title (`Title (720p).mp4`), so it sits next to a copy at Best instead of counting as already there. The choice starts at Best each time the app opens.
+- **English subtitles:** saved as a separate file next to the video (`Title.en.srt`), because Windows can't read subtitles inside an MP4. You get the video's real English subtitles when it has them, otherwise the site's automatic ones (on YouTube, sometimes its automatic translation into English). A video without English subtitles still downloads, and the window says so. If the video is already there, only the subtitles are added. If the subtitles can't be downloaded, nothing is saved and the window says so: try again later, or untick the box. The box starts unticked each time the app opens.
 - A file that is already there isn't downloaded again; the window says so.
 - One download at a time. Closing the window stops a download.
 - A link to a playlist or channel downloads only its first video, and the window says so.
@@ -52,7 +53,7 @@ GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 sec
 
 ## Credits
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) by the yt-dlp contributors, Unlicense: does all the downloading.
-- [FFmpeg](https://ffmpeg.org) by the FFmpeg developers, LGPL 2.1+ or GPL 2+ depending on the build (the suggested [yt-dlp build](https://github.com/yt-dlp/FFmpeg-Builds) is GPL): joins video and audio, converts to MP3.
+- [FFmpeg](https://ffmpeg.org) by the FFmpeg developers, LGPL 2.1+ or GPL 2+ depending on the build (the suggested [yt-dlp build](https://github.com/yt-dlp/FFmpeg-Builds) is GPL): joins video and audio, converts to MP3 and converts subtitles to SRT.
 - [yt-dlp-ejs](https://github.com/yt-dlp/ejs) by Simon Sawicki and the yt-dlp contributors, Unlicense with bundled MIT and ISC parts: installed with yt-dlp, solves YouTube's JavaScript challenges together with Deno.
 - [Deno](https://deno.com) by the Deno authors, MIT: the JavaScript runtime yt-dlp needs for YouTube.
 - [Get cookies.txt LOCALLY](https://github.com/kairi003/Get-cookies.txt-LOCALLY) by kairi003, MIT: a browser extension, not part of the app, for exporting Reddit's sign-in ([Signing in](docs/signing-in.md)).
