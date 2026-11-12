@@ -93,12 +93,14 @@ class FakeDownload:
     finish()."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, Kind, Path]] = []
+        self.calls: list[tuple[str, Kind, Path, int | None]] = []
         self.finished = threading.Event()
         self.failure: Failed | None = None
 
-    def __call__(self, link: str, kind: Kind, folder: Path, report: Report) -> None:
-        self.calls.append((link, kind, folder))
+    def __call__(
+        self, link: str, kind: Kind, folder: Path, report: Report, height: int | None
+    ) -> None:
+        self.calls.append((link, kind, folder, height))
         report(Progress(PROGRESS, 40.0))
         self.finished.wait(timeout=10)
         self.finished.clear()  # the next download waits for its own finish()

@@ -2,6 +2,21 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-11: Video quality: Best, 720p or 480p, as a height limit right after H.264 in the mp4 preset's sort
+- **Reason:** a lower quality saves space (on a long YouTube video, measured: 2677 MB at Best, 1513 MB at 720p, 562 MB at 480p). The limit (`res:720`) goes right after `vcodec:h264`, so files still play everywhere, and before `quality`, which YouTube fills from its own labels: after it, the limit does nothing (measured; docs/research/yt-dlp-library.md "Quality"). The choice is a row of radio buttons under MP4/MP3, greyed out while MP3 is chosen.
+- **File names:** a 720p or 480p file gets the choice after its title (`Title (720p).mp4`); Best keeps `Title.mp4`. Found in the review: with the title alone, downloading a video again at 720p to save space said "already there" and kept the big file.
+- **Who decided:** the user, on Claude's suggestions (To do 6).
+- **Rejected:**
+  - file names with the title only: see above; deleting the first file by hand would be needed
+  - the real height in every MP4's name (`Title (1080p).mp4`; the user asked about it after the build): Best's names would change, so files already downloaded wouldn't count as there, and a portrait video would show its long side (a vertical Reddit clip at 720p would be named `(1280p)`). No suffix means full quality, a common convention
+  - `Title (Best).mp4`: looks consistent but says nothing about the real quality
+  - a 1080p choice: it gave the same file as Best on both videos measured, a 4K one included, because YouTube's H.264 stops at 1080p
+  - "Highest" (VP9 or AV1, up to 4K): Windows' own player may not open it
+  - the limit first, as yt-dlp's `-t mp4 -S res:720` does: on a site that has the height only in VP9 or AV1 it gives a file that may not play; the same file on YouTube
+  - other formats (`-t aac`, `-t mkv`): none wanted yet
+  - remembering the choice between runs: it needs a settings file; it starts at Best
+  - a dropdown instead of radio buttons: more compact, but three choices fit in a row, and radio buttons show them all at once and are easier to click in the GUI test
+
 ## 2026-11-11: Signing in with a cookies.txt file in the app's own folder, Reddit only; no checkbox
 - **Decision:** the app uses `%APPDATA%\video-downloader\cookies.txt` (yt-dlp's `cookiefile`) whenever the file is there. The user exports it with the "Get cookies.txt LOCALLY" extension, using "Export" on a Reddit page, so it holds Reddit's cookies only. Never a password in the app.
 - **Reason:** yt-dlp can't read Edge's or Chrome's cookies on this PC (app-bound encryption, and the file is locked while the browser runs; docs/research/signing-in.md). A file exported from the browser the user already signs in with works whether the browser is open or not, and holds only the sites exported. Cookies go only to their own site, so a Reddit-only file changes nothing for YouTube; that makes a checkbox unnecessary.

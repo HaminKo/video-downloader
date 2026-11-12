@@ -10,6 +10,7 @@ from video_downloader.app import (
     LOOKING_UP,
     PASTE_A_LINK,
     PLAYLIST_NOTE,
+    QUALITIES,
     TITLE,
     WIDTH,
     App,
@@ -25,14 +26,16 @@ class FakeDownload:
     """Stands in for yt-dlp: reports `events` at once and remembers the calls."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, Kind, Path]] = []
+        self.calls: list[tuple[str, Kind, Path, int | None]] = []
         self.events: list[Event] = [
             Progress("Downloading video: 40% of 12 MB", 40.0),
             Done(Path("Test video.mp4"), already_there=False),
         ]
 
-    def __call__(self, link: str, kind: Kind, folder: Path, report: Report) -> None:
-        self.calls.append((link, kind, folder))
+    def __call__(
+        self, link: str, kind: Kind, folder: Path, report: Report, height: int | None
+    ) -> None:
+        self.calls.append((link, kind, folder, height))
         for event in self.events:
             report(event)
 
@@ -87,7 +90,7 @@ def test_download_shows_progress_then_done(
     assert app.status.get() == LOOKING_UP
     assert app.download_button.instate(["disabled"])
     wait_until_done(app)
-    assert fake.calls == [(LINK, Kind.MP4, tmp_path)]
+    assert fake.calls == [(LINK, Kind.MP4, tmp_path, None)]
     assert app.status.get() == done_message(Done(Path("Test video.mp4"), False))
     assert app.progress_bar.cget("value") == 100
     assert not app.download_button.instate(["disabled"])
@@ -99,6 +102,35 @@ def test_mp3_choice_reaches_the_download(app: App, fake: FakeDownload) -> None:
     app.download_button.invoke()
     wait_until_done(app)
     assert fake.calls[0][1] == Kind.MP3
+
+
+def test_quality_choice_reaches_the_download(app: App, fake: FakeDownload) -> None:
+    labels = [str(button.cget("text")) for button in app.quality_buttons]
+    assert labels == list(QUALITIES) == ["Best", "720p", "480p"]
+    assert QUALITIES[app.quality.get()] is None, "starts at Best"
+    app.quality_buttons[1].invoke()
+    app.link.set(LINK)
+    app.download_button.invoke()
+    wait_until_done(app)
+    assert fake.calls[0][3] == 720
+
+
+def test_quality_is_greyed_out_for_mp3_and_while_busy(app: App) -> None:
+    quality = [app.quality_label, *app.quality_buttons]
+
+    def greyed() -> list[bool]:
+        return [widget.instate(["disabled"]) for widget in quality]
+
+    assert greyed() == [False] * 4
+    app.mp3_button.invoke()
+    assert greyed() == [True] * 4
+    app.mp4_button.invoke()
+    assert greyed() == [False] * 4
+    app.link.set(LINK)
+    app.download_button.invoke()
+    assert greyed() == [True] * 4
+    wait_until_done(app)
+    assert greyed() == [False] * 4
 
 
 def test_one_download_at_a_time(app: App, fake: FakeDownload) -> None:

@@ -1,5 +1,5 @@
-"""The main window: a link box, MP4 or MP3, a Download button, progress and a
-status line."""
+"""The main window: a link box, MP4 or MP3, the video quality, a Download
+button, progress and a status line."""
 
 import queue
 import sys
@@ -20,6 +20,12 @@ PLAYLIST_NOTE = (
     "(playlists aren't supported yet)."
 )
 
+# The video quality choices and their limit as the downloader takes it (720
+# for 720p). "Best" (None) is the best that plays everywhere: 1080p on
+# YouTube, whose H.264 stops there, so a 1080p choice would give the same
+# file (docs/research/yt-dlp-library.md "Quality").
+QUALITIES: dict[str, int | None] = {"Best": None, "720p": 720, "480p": 480}
+
 # Failures are shown in dark red, everything else in the normal text color.
 FAILED_COLOR = "#a00000"
 
@@ -30,7 +36,8 @@ WIDTH = 600
 # How often the window checks for news from the download, in milliseconds.
 CHECK_EVERY = 100
 
-type Download = Callable[[str, Kind, Path, Report], None]
+# link, MP4 or MP3, folder, report, the quality limit (None: the best)
+type Download = Callable[[str, Kind, Path, Report, int | None], None]
 
 
 class App:
@@ -85,15 +92,29 @@ class App:
         )
         self.mp3_button.grid(row=0, column=1)
 
+        # Greyed out while MP3 is chosen.
+        self.quality = tk.StringVar(value="Best")  # a key of QUALITIES
+        qualities = ttk.Frame(frame)
+        qualities.grid(row=3, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.quality_label = ttk.Label(qualities, text="Video quality:")
+        self.quality_label.grid(row=0, column=0, padx=(0, 8))
+        self.quality_buttons = [
+            ttk.Radiobutton(qualities, text=text, variable=self.quality, value=text)
+            for text in QUALITIES
+        ]
+        for column, button in enumerate(self.quality_buttons, start=1):
+            button.grid(row=0, column=column, padx=(0, 16))
+        self.kind.trace_add("write", lambda *_: self.update_states())
+
         self.progress_bar = ttk.Progressbar(frame, maximum=100)
-        self.progress_bar.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.progress_bar.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
         # Progress, the result and error messages. yt-dlp's messages can be
         # long: they wrap to the window's width instead of widening it, and
         # the window grows taller to show every line.
         self.status = tk.StringVar()
         self.status_label = ttk.Label(frame, textvariable=self.status, justify="left")
-        self.status_label.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self.status_label.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         self.status_label.bind("<Configure>", self.wrap_status)
         self.status.trace_add("write", lambda *_: self.fit_height_soon())
         root.resizable(True, False)  # fit_height() sets the height
@@ -115,7 +136,13 @@ class App:
         self.show_status(LOOKING_UP)
         threading.Thread(
             target=self.run_download,
-            args=(link, Kind(self.kind.get()), self.folder, self.events.put),
+            args=(
+                link,
+                Kind(self.kind.get()),
+                self.folder,
+                self.events.put,
+                QUALITIES[self.quality.get()],  # the downloader ignores it for MP3
+            ),
             daemon=True,  # closing the window stops the download
         ).start()
         self.next_check = self.root.after(CHECK_EVERY, self.check_events)
@@ -174,9 +201,17 @@ class App:
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
-        state = ["disabled"] if busy else ["!disabled"]
+        self.update_states()
+
+    def update_states(self) -> None:
+        """Grey out what can't be used now: every choice and the Download
+        button during a download, the video quality while MP3 is chosen."""
+        idle = not self.busy
+        video = idle and self.kind.get() == Kind.MP4
         for widget in (self.download_button, self.mp4_button, self.mp3_button):
-            widget.state(state)
+            widget.state(["!disabled"] if idle else ["disabled"])
+        for widget in (self.quality_label, *self.quality_buttons):
+            widget.state(["!disabled"] if video else ["disabled"])
 
     def show_progress(self, percent: float | None) -> None:
         """Fill the bar to `percent`; None makes it move to and fro instead."""

@@ -62,7 +62,7 @@ def test_enter_in_link_box_starts_download(app: App, fake: FakeDownload) -> None
     assert app.link.get() == LINK, "the typed link should be in the link box"
     press(app.link_entry, "Return")
     wait_for_progress(app, "Enter in the link box")
-    assert fake.calls == [(LINK, Kind.MP4, app.folder)]
+    assert fake.calls == [(LINK, Kind.MP4, app.folder, None)]
     finish(app, fake)
 
 
@@ -90,6 +90,25 @@ def test_mp3_choice_reaches_the_download(app: App, fake: FakeDownload) -> None:
     assert app.status.get().startswith(f"Done: {VIDEO_TITLE}.mp3"), app.status.get()
 
 
+def test_quality_choice_reaches_the_download(app: App, fake: FakeDownload) -> None:
+    best, p720, p480 = app.quality_buttons
+    quality = [app.quality_label, *app.quality_buttons]
+    click(app.mp3_button)
+    assert all(w.instate(["disabled"]) for w in quality), "no quality for MP3"
+    click(p480)
+    assert app.quality.get() == "Best", "a greyed-out choice was taken"
+    click(app.mp4_button)
+    assert not any(w.instate(["disabled"]) for w in quality)
+    click(p720)
+    type_text(app.link_entry, LINK)
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "choosing 720p and pressing Enter")
+    assert fake.calls == [(LINK, Kind.MP4, app.folder, 720)]
+    assert best.instate(["disabled"]), "no other quality during a download"
+    finish(app, fake)
+    assert not best.instate(["disabled"])
+
+
 def test_failure_shows_a_plain_message_in_red(app: App, fake: FakeDownload) -> None:
     type_text(app.link_entry, LINK)
     press(app.link_entry, "Return")
@@ -113,6 +132,8 @@ def test_everything_fits_the_window(app: App) -> None:
         app.download_button,
         app.mp4_button,
         app.mp3_button,
+        app.quality_label,
+        *app.quality_buttons,
         app.progress_bar,
     ):
         assert_inside_window(widget)

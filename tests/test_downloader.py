@@ -78,6 +78,78 @@ def test_options_are_a_copy() -> None:
     assert copied is not PRESETS[Kind.MP3].get("postprocessors")
 
 
+def test_height_limit_comes_right_after_h264(tmp_path: Path) -> None:
+    preset = list(PRESETS[Kind.MP4].get("format_sort") or [])
+    assert preset[0] == "vcodec:h264"
+    for height in (720, 480):
+        sort = options(Kind.MP4, tmp_path, height).get("format_sort")
+        assert sort == ["vcodec:h264", f"res:{height}", *preset[1:]]
+    assert options(Kind.MP4, tmp_path).get("format_sort") == preset
+    assert options(Kind.MP4, tmp_path, 720).get("outtmpl") == (
+        "%(title).150B (720p).%(ext)s"
+    )
+    assert PRESETS[Kind.MP4].get("format_sort") == preset, "the preset was changed"
+    assert options(Kind.MP3, tmp_path, 720) == options(Kind.MP3, tmp_path)
+
+
+def youtube_like_video() -> Any:  # yt-dlp's _InfoDict, which lists few keys
+    """A video as yt-dlp's YouTube extractor lists it: H.264 up to 1080p, VP9
+    up to 2160p, sound apart, and `quality` from YouTube's own labels (480p 7,
+    720p 8, 1080p 9, 2160p 11)."""
+    videos = [
+        ("135", "avc1.4d401f", 854, 480, 7),
+        ("136", "avc1.4d401f", 1280, 720, 8),
+        ("137", "avc1.640028", 1920, 1080, 9),
+        ("244", "vp9", 854, 480, 7),
+        ("247", "vp9", 1280, 720, 8),
+        ("248", "vp9", 1920, 1080, 9),
+        ("313", "vp9", 3840, 2160, 11),
+    ]
+    formats: list[dict[str, Any]] = [
+        {
+            "format_id": format_id,
+            "url": f"https://example.com/{format_id}",
+            "ext": "mp4" if vcodec.startswith("avc1") else "webm",
+            "vcodec": vcodec,
+            "acodec": "none",
+            "width": width,
+            "height": height,
+            "quality": quality,
+        }
+        for format_id, vcodec, width, height, quality in videos
+    ]
+    formats.append(
+        {
+            "format_id": "140",
+            "url": "https://example.com/140",
+            "ext": "m4a",
+            "vcodec": "none",
+            "acodec": "mp4a.40.2",
+            "quality": 3,
+        }
+    )
+    return {"id": "test", "title": "Test", "formats": formats}
+
+
+@pytest.mark.parametrize(
+    ("height", "expected"),
+    [(None, "137+140"), (720, "136+140"), (480, "135+140"), (360, "135+140")],
+)
+def test_height_limit_picks_that_height_in_h264(
+    height: int | None, expected: str, tmp_path: Path
+) -> None:
+    # yt-dlp's own format choice, without the internet. 360p isn't there: the
+    # smallest above it is taken.
+    settings = options(Kind.MP4, tmp_path, height)
+    # yt-dlp's default when ffmpeg is there, set here so the test doesn't
+    # need ffmpeg.
+    settings["format"] = "bv*+ba/b"
+    settings["quiet"] = True
+    with yt_dlp.YoutubeDL(settings) as ydl:
+        chosen: Any = ydl.process_ie_result(youtube_like_video(), download=False)
+    assert chosen["format_id"] == expected
+
+
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
@@ -294,9 +366,9 @@ def clip_link(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         server.server_close()
 
 
-def run(link: str, kind: Kind, folder: Path) -> list[Event]:
+def run(link: str, kind: Kind, folder: Path, height: int | None = None) -> list[Event]:
     events: list[Event] = []
-    download(link, kind, folder, events.append)
+    download(link, kind, folder, events.append, height)
     return events
 
 
@@ -318,6 +390,16 @@ def test_download_then_already_there(
     bars = [e for e in again if isinstance(e, Progress) and e.percent is not None]
     assert bars == []
     assert again[-1] == Done(folder / f"clip.{kind}", already_there=True)
+
+
+def test_another_quality_is_a_file_of_its_own(clip_link: str, tmp_path: Path) -> None:
+    # Best, then 720p of the same video to save space: the 720p one isn't
+    # "already there".
+    assert run(clip_link, Kind.MP4, tmp_path)[-1] == Done(tmp_path / "clip.mp4", False)
+    smaller = run(clip_link, Kind.MP4, tmp_path, 720)
+    assert smaller[-1] == Done(tmp_path / "clip (720p).mp4", already_there=False)
+    again = run(clip_link, Kind.MP4, tmp_path, 720)
+    assert again[-1] == Done(tmp_path / "clip (720p).mp4", already_there=True)
 
 
 def test_broken_link_gives_a_plain_message(clip_link: str, tmp_path: Path) -> None:

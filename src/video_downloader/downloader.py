@@ -1,4 +1,4 @@
-"""Download one video with yt-dlp, as MP4 or MP3.
+"""Download one video with yt-dlp, as MP4 (in a chosen quality) or MP3.
 
 The window runs download() in a background thread. It hears what happens
 only through `report`: Progress events while it runs, then exactly one Done
@@ -66,8 +66,11 @@ PRESETS: dict[Kind, "_Params"] = {
 }
 
 # The video's title, cut to 150 bytes so the path stays well under Windows'
-# 260-character limit (X posts use the whole post as the title).
+# 260-character limit (X posts use the whole post as the title). A video in
+# a lower quality gets it after the title, so it is a file of its own and
+# not "already there" next to the same video at Best.
 FILE_NAME = "%(title).150B.%(ext)s"
+FILE_NAME_WITH_QUALITY = "%(title).150B ({height}p).%(ext)s"
 
 # Sign-ins the user exported from their browser as a cookies.txt (Reddit's
 # only), used whenever the file is there. yt-dlp can't read Edge's or Chrome's
@@ -182,13 +185,27 @@ def default_folder() -> Path:
     return Path.home() / "Downloads" / "Videos"
 
 
-def options(kind: Kind, folder: Path) -> "_Params":
-    """yt-dlp's settings for one download into `folder`, without the hooks."""
+def options(kind: Kind, folder: Path, height: int | None = None) -> "_Params":
+    """yt-dlp's settings for one download into `folder`, without the hooks.
+
+    height: for MP4, the largest to take (720 for 720p), counted on the
+    video's shorter side, so a portrait video's width; with none at or under
+    it, the smallest above. None: the best that plays everywhere.
+    """
     settings = copy.deepcopy(PRESETS[kind])
+    file_name = FILE_NAME
+    if height and kind == Kind.MP4:
+        # Right after H.264, which stays first, and before "quality", which
+        # YouTube fills from its own labels: after it, the limit would do
+        # nothing (docs/research/yt-dlp-library.md "Quality").
+        sort = list(settings.get("format_sort") or [])
+        sort.insert(sort.index("vcodec:h264") + 1, f"res:{height}")
+        settings["format_sort"] = sort
+        file_name = FILE_NAME_WITH_QUALITY.format(height=height)
     settings.update(
         {
             "paths": {"home": str(folder)},
-            "outtmpl": FILE_NAME,
+            "outtmpl": file_name,
             # A link to a video in a playlist gets just that video; a link to a
             # whole playlist or channel gets its first video only.
             "noplaylist": True,
@@ -210,8 +227,11 @@ def options(kind: Kind, folder: Path) -> "_Params":
     return settings
 
 
-def download(link: str, kind: Kind, folder: Path, report: Report) -> None:
-    """Download the video at `link` into `folder` (made if missing)."""
+def download(
+    link: str, kind: Kind, folder: Path, report: Report, height: int | None = None
+) -> None:
+    """Download the video at `link` into `folder` (made if missing); `height`
+    as in options()."""
     saved: list[Path] = []
 
     def on_progress(status: Mapping[str, Any]) -> None:
@@ -230,7 +250,7 @@ def download(link: str, kind: Kind, folder: Path, report: Report) -> None:
         return
     signed_in = False
     try:
-        settings = options(kind, folder)  # reads the sign-in file
+        settings = options(kind, folder, height)  # reads the sign-in file
         signed_in = "cookiefile" in settings
         settings["progress_hooks"] = [on_progress]
         settings["postprocessor_hooks"] = [on_step]

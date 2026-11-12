@@ -13,6 +13,19 @@ Found while building To do 3, step A (2026-11-11), with yt-dlp 2026.10.26. "Read
 - **Types:** pyright bundles stubs for yt-dlp (typeshed's `types-yt-dlp`). The settings type is `yt_dlp._Params`, a TypedDict that exists only for type checking: import it under `if TYPE_CHECKING:` and write it in quotes. Its hooks take `Mapping[str, Any]`, so our hook functions must too.
 - **File dates:** with the library's defaults (`updatetime` unset), files get the download time as their date, not the upload date. The command line sets `updatetime` only with `--mtime` or the `mtime-by-default` compat option (read in `__init__.py`).
 
+## Quality: a height limit in `format_sort` (To do 6, 2026-11-11)
+- **How a limit works** (read in the source, `FormatSorter` in utils/_utils.py): `res:720` prefers the largest `res` up to 720, and if there is none, the smallest above it. `res` is the smaller of width and height, so a portrait 1080x1920 video counts as 1080. Fields are compared in list order, and only a field's first appearance counts: a later `res:720` after a plain `res` does nothing.
+- **The trap: `quality` comes before `res` in the mp4 preset**, and YouTube sets `quality` from its own labels (hd720, hd1080...; read in extractor/youtube/_video.py). So writing `res:720` in place of `res` still picks 1080p: measured on two videos, every limit (1080, 720, 480) gave the same 1080p file. The limit has to come before `quality`.
+- **Where to put it:** right after `vcodec:h264` (H.264 still wins over the height) or first, as yt-dlp's command line does for `-t mp4 -S res:720` (a later `-S` is put in front: `append: -1` in options.py). Both gave the same files on the two videos measured, since YouTube has H.264 at 1080, 720 and 480. They differ only on a site whose wanted height exists only in another codec: then "first" takes that codec, "after H.264" takes another height in H.264.
+- **Measured 2026-11-11** with extract_info(process=False) once, then only yt-dlp's format selection per sort list (scratch script, not kept); sizes are YouTube's own figures for each format, not downloaded files:
+
+  | Video | Best that plays everywhere (preset) | 720p | 480p | Highest (yt-dlp default) |
+  |---|---|---|---|---|
+  | 4K test video, about 1 hour | 1080p H.264, 2677 MB | 720p H.264, 1513 MB | 480p H.264, 562 MB | 2160p VP9, 17117 MB |
+  | 10-minute tutorial | 1080p H.264, 23.0 MB | 720p H.264, 18.5 MB | 480p H.264, 14.1 MB | 1080p AV1, 17.4 MB |
+
+  The preset gave 1080p even for the 4K video: YouTube's H.264 stops at 1080p, so a "1080p" choice would give the same file as the preset. Audio is the same in every column (AAC, 82 MB and 10 MB), which is why the tutorial shrinks so little.
+
 ## Hooks
 - **progress_hooks** (measured): `status` "downloading" many times with `downloaded_bytes` and `total_bytes` or `total_bytes_estimate` (HLS: `fragment_index` and `fragment_count`), then "finished". `info_dict` is the format being downloaded, so `vcodec == "none"` means audio and `acodec == "none"` means video.
 - **A file that is already there** (measured, and read in `process_info`):
