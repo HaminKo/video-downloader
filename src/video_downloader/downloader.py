@@ -90,7 +90,11 @@ SIGN_IN = (
     "This video needs you to be signed in (for example, it's age-restricted "
     "or for members only). The app can't sign in yet."
 )
-REDDIT = "Reddit blocks downloads from this app for now."
+# Reddit refuses a post's data to anyone not signed in, a real browser included
+# (docs/research/yt-dlp-library.md "Sites").
+REDDIT = (
+    "Reddit only allows downloads when you're signed in, and the app can't sign in yet."
+)
 BOT_CHECK = "YouTube wants to check you're not a bot. Try again later."
 RATE_LIMITED = "YouTube is limiting downloads for now. Try again in about an hour."
 COUNTRY = "This video isn't available in your country."

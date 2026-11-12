@@ -2,6 +2,16 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-11: Reddit stays unsupported until the app can sign in; curl_cffi tried and taken out again
+- **Reason:** Reddit refuses a post's data (the `.json` link yt-dlp's Reddit code reads) to anyone not signed in on this network, a real browser included: an InPrivate Edge window showed Reddit's "blocked by network security" page. yt-dlp's `curl-cffi` extra (browser impersonation, which yt-dlp's README calls "recommended") was installed and made yt-dlp's first requests get through, also with `--impersonate chrome` for every request, but the post's data stayed blocked. Kept, it would have added a compiled package (2.1 MB download), a test on a private yt-dlp function and a longer update command for no gain seen. Details, step by step: docs/research/yt-dlp-library.md "Sites".
+- **Who decided:** the user, on Claude's suggestions (To do 4), including the window's Reddit message: "Reddit only allows downloads when you're signed in, and the app can't sign in yet."
+- **Rejected:**
+  - keeping curl_cffi anyway: it might help some other site that checks how requests look, but none has come up
+  - signing in now (browser cookies): on the "Later" list. When it's wanted: yt-dlp often can't read Chrome's or Edge's cookies on Windows, Firefox's work better (general knowledge, not checked)
+  - reading the post's normal web page instead of its `.json`: that would be our own Reddit downloader, which the project rules out
+  - updating yt-dlp automatically when a download fails (asked during To do 4): the new version only loads after a restart, and most failures (private video, no internet) aren't fixed by an update. An update at start-up, about once a week, is the better shape if it's ever wanted; not a to-do yet.
+- **Install:** the user installed and removed curl_cffi; Claude Code's safety check refused installing it from a Claude session (as getting around a bot check).
+
 ## 2026-11-11: Plain messages when a download fails, found by matching yt-dlp's error text; ffmpeg checked before starting
 - **Reason:** yt-dlp's messages are long and talk about command-line options the app doesn't have. A private, removed or sign-in-only video is the same error type in yt-dlp; only the text differs, so the app matches text patterns in order (`PLAIN_MESSAGES` in downloader.py) and shows yt-dlp's own text for anything else. If a yt-dlp update changes a text, that case falls back to yt-dlp's text, no worse than before. Without ffmpeg, yt-dlp doesn't fail on an MP4 but quietly picks a worse file, so the app checks for ffmpeg first (docs/research/yt-dlp-library.md "Errors").
 - **Who decided:** the user, on Claude's suggestions (To do 3, step B), including the wording of each message.

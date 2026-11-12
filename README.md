@@ -15,7 +15,7 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)**, and press Download
 - One download at a time. Closing the window stops a download.
 - A link to a playlist or channel downloads only its first video, and the window says so.
 - When a download fails, the line under the bar says why in plain words, in red: not a link, a site or page with no video, no internet, a private or removed video, one that needs signing in, or ffmpeg missing. Anything else shows yt-dlp's own message. yt-dlp's full message is also printed in the terminal the app runs from.
-- Reddit doesn't work yet: Reddit blocks yt-dlp unless it can look like a browser (To do 4 in [docs/todo.md](docs/todo.md)).
+- Reddit doesn't work: Reddit only gives a post's video to people who are signed in, and the app can't sign in yet (signing in is on the "Later" list in [docs/todo.md](docs/todo.md)).
 
 ## Install and run
 Needs Windows, Python 3.13 or newer, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com). All commands are for PowerShell.

@@ -35,6 +35,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - Build on yt-dlp as a Python library; never write our own site downloaders. Desktop window first, Edge button later.
 - Python 3.13 with tkinter for the window.
 - Deno (yt-dlp's default) is the JavaScript runtime for YouTube, not Node.
+- Reddit needs signing in (it blocks anyone not signed in); curl_cffi was tried and doesn't help.
 - ffmpeg is winget's `yt-dlp.FFmpeg` (yt-dlp's own build).
 - MP4 and MP3 use yt-dlp's own `-t mp4` (H.264 + AAC, plays everywhere) and `-t mp3` presets.
 - Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.
