@@ -5,7 +5,7 @@ A small Windows app: paste a link to a video and it saves the video to your PC a
 It does not download from DRM-protected services (Netflix, Disney+, Spotify and the like).
 
 ## Status
-Downloading works, and when a download fails the window says why in plain words. What comes next is in [docs/todo.md](docs/todo.md).
+Downloading works, and when a download fails the window says why in plain words. Reddit works once you've signed in ([Signing in](docs/signing-in.md)). What comes next is in [docs/todo.md](docs/todo.md).
 
 ## Using it
 Paste a link, choose **Video (MP4)** or **Audio only (MP3)**, and press Download (or Enter). The bar and the line under it show the progress.
@@ -15,7 +15,7 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)**, and press Download
 - One download at a time. Closing the window stops a download.
 - A link to a playlist or channel downloads only its first video, and the window says so.
 - When a download fails, the line under the bar says why in plain words, in red: not a link, a site or page with no video, no internet, a private or removed video, one that needs signing in, or ffmpeg missing. Anything else shows yt-dlp's own message. yt-dlp's full message is also printed in the terminal the app runs from.
-- Reddit doesn't work: Reddit only gives a post's video to people who are signed in, and the app can't sign in yet (signing in is on the "Later" list in [docs/todo.md](docs/todo.md)).
+- Reddit only gives a post's video to people who are signed in. To sign in, you export Reddit's sign-in from your browser once, as a file the app uses: see [Signing in](docs/signing-in.md). The app doesn't sign in to YouTube (it could get the account banned).
 
 ## Install and run
 Needs Windows, Python 3.13 or newer, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com). All commands are for PowerShell.
@@ -54,5 +54,6 @@ GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 sec
 - [FFmpeg](https://ffmpeg.org) by the FFmpeg developers, LGPL 2.1+ or GPL 2+ depending on the build (the suggested [yt-dlp build](https://github.com/yt-dlp/FFmpeg-Builds) is GPL): joins video and audio, converts to MP3.
 - [yt-dlp-ejs](https://github.com/yt-dlp/ejs) by Simon Sawicki and the yt-dlp contributors, Unlicense with bundled MIT and ISC parts: installed with yt-dlp, solves YouTube's JavaScript challenges together with Deno.
 - [Deno](https://deno.com) by the Deno authors, MIT: the JavaScript runtime yt-dlp needs for YouTube.
+- [Get cookies.txt LOCALLY](https://github.com/kairi003/Get-cookies.txt-LOCALLY) by kairi003, MIT: a browser extension, not part of the app, for exporting Reddit's sign-in ([Signing in](docs/signing-in.md)).
 - [Python](https://www.python.org) and tkinter by the Python Software Foundation, PSF License (tkinter uses [Tcl/Tk](https://www.tcl-lang.org), BSD-style license): the app and its window.
 - Development tools: [ruff](https://github.com/astral-sh/ruff) by Astral (MIT), [pyright](https://github.com/microsoft/pyright) by Microsoft (MIT), [pytest](https://pytest.org) by the pytest-dev team (MIT), [Pillow](https://python-pillow.github.io) by Jeffrey A. Clark and contributors (MIT-CMU, screenshots for the GUI test), [hatchling](https://github.com/pypa/hatch) by the Python Packaging Authority (MIT, builds the package for the install).

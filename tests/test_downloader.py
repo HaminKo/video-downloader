@@ -10,8 +10,10 @@ from typing import Any
 import pytest
 import yt_dlp
 
+from video_downloader import downloader
 from video_downloader.downloader import (
     BOT_CHECK,
+    COOKIES_BROKEN,
     COUNTRY,
     FFMPEG_MISSING,
     NO_CONNECTION,
@@ -22,6 +24,7 @@ from video_downloader.downloader import (
     PRIVATE,
     RATE_LIMITED,
     REDDIT,
+    REDDIT_REFUSED,
     SIGN_IN,
     Done,
     Event,
@@ -59,6 +62,14 @@ def test_options_save_by_title_in_the_folder_one_video_only(tmp_path: Path) -> N
     assert settings.get("playlist_items") == "1"
     assert settings.get("merge_output_format") == "mp4"
     assert options(Kind.MP3, tmp_path).get("final_ext") == "mp3"
+
+
+def test_options_use_the_sign_in_file_only_when_it_is_there(tmp_path: Path) -> None:
+    # conftest.py points COOKIES into a temporary folder.
+    assert "cookiefile" not in options(Kind.MP4, tmp_path)
+    downloader.COOKIES.write_text("# Netscape HTTP Cookie File\n")
+    cookies: Any = options(Kind.MP4, tmp_path).get("cookiefile")
+    assert cookies.read() == "# Netscape HTTP Cookie File\n"
 
 
 def test_options_are_a_copy() -> None:
@@ -174,6 +185,12 @@ ERROR_TEXTS = {
         "--cookies, --cookies-from-browser, --username and --password",
         SIGN_IN,
     ),
+    "account needed, no cookies hint (from the source, tenplay)": (
+        "[TenPlay] 123: Login required to access this video. Use --username "
+        "and --password, --netrc-cmd, or --netrc (tenplay) to provide account "
+        "credentials",
+        SIGN_IN,
+    ),
     "bot check (from the source)": (
         f"[youtube] abc: Sign in to confirm you’re not a bot. {COOKIES_HINT}",
         BOT_CHECK,
@@ -200,6 +217,13 @@ def test_plain_message(text: str, expected: str) -> None:
     assert plain_message(f"ERROR: {text}") == expected
 
 
+def test_reddit_refusing_the_sign_in_file_gets_its_own_message() -> None:
+    reddit = ERROR_TEXTS["reddit"][0]
+    assert plain_message(f"ERROR: {reddit}", signed_in=True) == REDDIT_REFUSED
+    age, expected = ERROR_TEXTS["age (from the source)"]
+    assert plain_message(f"ERROR: {age}", signed_in=True) == expected
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -224,9 +248,18 @@ def test_size_text() -> None:
 # --- With real yt-dlp and ffmpeg, against a web server on this PC (no internet).
 
 
+# The Cookie headers the test server received.
+cookies_received: list[str] = []
+
+
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         pass
+
+    def do_GET(self) -> None:
+        if cookie := self.headers.get("Cookie"):
+            cookies_received.append(cookie)
+        super().do_GET()
 
 
 @pytest.fixture(scope="module")
@@ -291,6 +324,36 @@ def test_broken_link_gives_a_plain_message(clip_link: str, tmp_path: Path) -> No
     missing = clip_link.replace("clip.mp4", "missing.mp4")
     assert run(missing, Kind.MP4, tmp_path) == [Failed(NOT_AVAILABLE)]
     assert run("hello", Kind.MP4, tmp_path) == [Failed(NOT_A_LINK)]
+
+
+def test_download_sends_the_sign_in_files_cookies(
+    clip_link: str, tmp_path: Path
+) -> None:
+    # A cookies.txt (Netscape format, tab-separated) with one cookie for the
+    # test server: domain, subdomains too, path, https only, expires, name, value.
+    line = "\t".join(["127.0.0.1", "FALSE", "/", "FALSE", "4102444800", "sid", "42"])
+    exported = f"# Netscape HTTP Cookie File\n{line}\n"
+    downloader.COOKIES.write_text(exported)
+    cookies_received.clear()
+    assert isinstance(run(clip_link, Kind.MP4, tmp_path / "Videos")[-1], Done)
+    assert "sid=42" in cookies_received
+    # yt-dlp wrote the cookies back into its copy, not into the file.
+    assert downloader.COOKIES.read_text() == exported
+
+
+def test_broken_sign_in_file_gives_a_plain_message(
+    clip_link: str, tmp_path: Path
+) -> None:
+    # The extension's other format, JSON, then a file that's no cookies file.
+    for text in ['[{"domain": ".reddit.com", "name": "a"}]', "hello\n"]:
+        downloader.COOKIES.write_text(text)
+        assert run(clip_link, Kind.MP4, tmp_path) == [Failed(COOKIES_BROKEN)]
+    # Not text at all: the app can't even read it, but the window still hears
+    # that the download ended.
+    downloader.COOKIES.write_bytes(b"\xff\xfe\x00")
+    [event] = run(clip_link, Kind.MP4, tmp_path)
+    assert isinstance(event, Failed)
+    assert event.message.startswith("Something went wrong")
 
 
 def test_playlist_downloads_its_first_video_and_says_so(

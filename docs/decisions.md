@@ -2,12 +2,26 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-11: Signing in with a cookies.txt file in the app's own folder, Reddit only; no checkbox
+- **Decision:** the app uses `%APPDATA%\video-downloader\cookies.txt` (yt-dlp's `cookiefile`) whenever the file is there. The user exports it with the "Get cookies.txt LOCALLY" extension, using "Export" on a Reddit page, so it holds Reddit's cookies only. Never a password in the app.
+- **Reason:** yt-dlp can't read Edge's or Chrome's cookies on this PC (app-bound encryption, and the file is locked while the browser runs; docs/research/signing-in.md). A file exported from the browser the user already signs in with works whether the browser is open or not, and holds only the sites exported. Cookies go only to their own site, so a Reddit-only file changes nothing for YouTube; that makes a checkbox unnecessary.
+- **Who decided:** the user, on Claude's suggestions (To do 5), including the window's three sign-in messages.
+- **Rejected:**
+  - reading Edge's or Chrome's sign-ins directly (`cookiesfrombrowser`): fails here, see above
+  - signing in to Reddit in Firefox and reading Firefox's cookies: no extension or file, but a second browser, and any later Google sign-in there would put the account on every YouTube download
+  - a checkbox "Use my browser sign-ins", off by default: the app saves no settings, so it would need ticking for every Reddit download, and it protects nothing a Reddit-only file doesn't
+  - YouTube sign-ins: yt-dlp's wiki warns an account used with yt-dlp may be banned; members-only and age-restricted YouTube videos stay unsupported for now
+  - keeping the file in the project or in Downloads: it's a sign-in key in plain text
+- **The app only reads the file** (changed after the code review, Claude's suggestion; the user's plan answer had accepted yt-dlp's write-back): yt-dlp gets a copy in memory, so it can't write the file back. yt-dlp's own behaviour, writing every cookie back after each download, would have filled the file with YouTube's and other sites' cookies (so every YouTube download would share one visitor identity) and could empty it if two downloads saved at once. The cost: sign-in cookies Reddit refreshes aren't kept; if that makes the sign-in run out quickly, write-back for Reddit's cookies only is the fix.
+- **Also chosen:** a broken file (JSON, not a cookies file) gets its own message, since it fails every download. The tests point the app at a temporary file, so they never use the real one.
+
 ## 2026-11-11: Reddit stays unsupported until the app can sign in; curl_cffi tried and taken out again
+- **Since To do 5 (same day):** Reddit works with a sign-in file (the entry above); the user's test downloaded this entry's example link.
 - **Reason:** Reddit refuses a post's data (the `.json` link yt-dlp's Reddit code reads) to anyone not signed in on this network, a real browser included: an InPrivate Edge window showed Reddit's "blocked by network security" page. yt-dlp's `curl-cffi` extra (browser impersonation, which yt-dlp's README calls "recommended") was installed and made yt-dlp's first requests get through, also with `--impersonate chrome` for every request, but the post's data stayed blocked. Kept, it would have added a compiled package (2.1 MB download), a test on a private yt-dlp function and a longer update command for no gain seen. Details, step by step: docs/research/yt-dlp-library.md "Sites".
 - **Who decided:** the user, on Claude's suggestions (To do 4), including the window's Reddit message: "Reddit only allows downloads when you're signed in, and the app can't sign in yet."
 - **Rejected:**
   - keeping curl_cffi anyway: it might help some other site that checks how requests look, but none has come up
-  - signing in now (browser cookies): on the "Later" list. When it's wanted: yt-dlp often can't read Chrome's or Edge's cookies on Windows, Firefox's work better (general knowledge, not checked)
+  - signing in now (browser cookies): on the "Later" list. When it's wanted: yt-dlp often can't read Chrome's or Edge's cookies on Windows, Firefox's work better (general knowledge then; checked in To do 5: right for Edge and Chrome on this PC, docs/research/signing-in.md)
   - reading the post's normal web page instead of its `.json`: that would be our own Reddit downloader, which the project rules out
   - updating yt-dlp automatically when a download fails (asked during To do 4): the new version only loads after a restart, and most failures (private video, no internet) aren't fixed by an update. An update at start-up, about once a week, is the better shape if it's ever wanted; not a to-do yet.
 - **Install:** the user installed and removed curl_cffi; Claude Code's safety check refused installing it from a Claude session (as getting around a bot check).

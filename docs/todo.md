@@ -1,8 +1,8 @@
 # To do
 
 ## Where we are
-- Now: To do 5 (Signing in)
-- Next: To do 6, 7, 8, 9, 10
+- Now: To do 6 (Choosing quality and formats)
+- Next: To do 7, 8, 9, 10
 - Updated: 2026-11-11
 
 ## To do
@@ -11,12 +11,11 @@ Next number: 12. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- To do 5: Signing in (medium; user 2026-11-11): docs/todo/05-signing-in.md
+- To do 6: Choosing quality and formats (medium; user 2026-11-11): docs/todo/06-quality-and-formats.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
 
-- To do 6: Choosing quality and formats (medium; user 2026-11-11): docs/todo/06-quality-and-formats.md
 - To do 7: Subtitles (small; user 2026-11-11): docs/todo/07-subtitles.md
 - To do 8: Playlists and whole channels (medium; user 2026-11-11): docs/todo/08-playlists.md
 - To do 9: Queue and history (medium; user 2026-11-11): docs/todo/09-queue-and-history.md

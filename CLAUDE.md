@@ -36,6 +36,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - Python 3.13 with tkinter for the window.
 - Deno (yt-dlp's default) is the JavaScript runtime for YouTube, not Node.
 - Reddit needs signing in (it blocks anyone not signed in); curl_cffi was tried and doesn't help.
+- Signing in: a cookies.txt (Reddit's cookies only) in `%APPDATA%\video-downloader`, used whenever it's there and only read (yt-dlp gets a copy); no checkbox, no YouTube sign-ins, never a password in the app.
 - ffmpeg is winget's `yt-dlp.FFmpeg` (yt-dlp's own build).
 - MP4 and MP3 use yt-dlp's own `-t mp4` (H.264 + AAC, plays everywhere) and `-t mp3` presets.
 - Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.

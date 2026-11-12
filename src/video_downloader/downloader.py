@@ -6,6 +6,8 @@ or Failed.
 """
 
 import copy
+import io
+import os
 import re
 import shutil
 from collections.abc import Callable, Mapping
@@ -67,6 +69,15 @@ PRESETS: dict[Kind, "_Params"] = {
 # 260-character limit (X posts use the whole post as the title).
 FILE_NAME = "%(title).150B.%(ext)s"
 
+# Sign-ins the user exported from their browser as a cookies.txt (Reddit's
+# only), used whenever the file is there. yt-dlp can't read Edge's or Chrome's
+# own cookies on Windows (docs/research/signing-in.md, docs/signing-in.md).
+COOKIES = (
+    Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming")
+    / "video-downloader"
+    / "cookies.txt"
+)
+
 # yt-dlp's steps after the download, as the window names them.
 STEP_TEXTS = {
     "Merger": "Joining video and audio...",
@@ -88,12 +99,22 @@ NOT_AVAILABLE = (
 )
 SIGN_IN = (
     "This video needs you to be signed in (for example, it's age-restricted "
-    "or for members only). The app can't sign in yet."
+    "or for members only). The app only signs in to Reddit for now."
 )
 # Reddit refuses a post's data to anyone not signed in, a real browser included
-# (docs/research/yt-dlp-library.md "Sites").
+# (docs/research/yt-dlp-library.md "Sites"). REDDIT_REFUSED: the same error
+# while the app used the sign-in file.
 REDDIT = (
-    "Reddit only allows downloads when you're signed in, and the app can't sign in yet."
+    "Reddit only allows downloads when you're signed in. To sign in, see "
+    '"Signing in" in the README.'
+)
+REDDIT_REFUSED = (
+    "Reddit didn't accept your sign-in: it may have run out, or the file isn't "
+    "Reddit's. Export Reddit's cookies again (README, \"Signing in\")."
+)
+COOKIES_BROKEN = (
+    "The sign-in file can't be read. Export Reddit's cookies again (format: "
+    'Netscape), or delete the file (README, "Signing in").'
 )
 BOT_CHECK = "YouTube wants to check you're not a bot. Try again later."
 RATE_LIMITED = "YouTube is limiting downloads for now. Try again in about an hour."
@@ -110,6 +131,8 @@ FFMPEG_MISSING = (
 # texts, measured and read in the source: docs/research/yt-dlp-library.md
 # "Errors". Anything else shows yt-dlp's own text.
 PLAIN_MESSAGES = [
+    # A broken sign-in file fails every download, whatever the link.
+    (r"Netscape format", COOKIES_BROKEN),
     (r"is not a valid URL", NOT_A_LINK),
     (r"Unsupported URL:", NO_VIDEO),
     (r"(ffmpeg|ffprobe) not found|ffmpeg is not installed", FFMPEG_MISSING),
@@ -123,7 +146,7 @@ PLAIN_MESSAGES = [
     (r"not a bot", BOT_CHECK),
     (r"rate-limited", RATE_LIMITED),
     (r"not available from your location|available in your country", COUNTRY),
-    (r"sign in|log ?in|--cookies|members-only|registered users", SIGN_IN),
+    (r"\bsign in\b|\blog ?in\b|--cookies|members-only|registered users", SIGN_IN),
     (
         r"video is unavailable|video unavailable|has been removed"
         r"|no longer available|does not exist|HTTP Error (404|410)",
@@ -177,6 +200,13 @@ def options(kind: Kind, folder: Path) -> "_Params":
             "color": {"stdout": "never", "stderr": "never"},
         }
     )
+    if COOKIES.is_file():
+        # yt-dlp sends each cookie only to its own site. It writes every
+        # cookie back after the download, YouTube's too; given a copy in
+        # memory (a text stream, which yt-dlp also takes, though its type
+        # stub says str only), the file stays as exported (docs/decisions.md).
+        cookies = io.StringIO(COOKIES.read_text(encoding="utf-8"))
+        settings["cookiefile"] = cookies  # pyright: ignore[reportGeneralTypeIssues]
     return settings
 
 
@@ -198,11 +228,13 @@ def download(link: str, kind: Kind, folder: Path, report: Report) -> None:
     if shutil.which("ffmpeg") is None:
         report(Failed(FFMPEG_MISSING))
         return
-    settings = options(kind, folder)
-    settings["progress_hooks"] = [on_progress]
-    settings["postprocessor_hooks"] = [on_step]
-    settings["post_hooks"] = [lambda path: saved.append(Path(path))]
+    signed_in = False
     try:
+        settings = options(kind, folder)  # reads the sign-in file
+        signed_in = "cookiefile" in settings
+        settings["progress_hooks"] = [on_progress]
+        settings["postprocessor_hooks"] = [on_step]
+        settings["post_hooks"] = [lambda path: saved.append(Path(path))]
         folder.mkdir(parents=True, exist_ok=True)
         # yt-dlp doesn't say whether it skipped a file that was already there,
         # and its progress reports can't tell either: downloads it hands to
@@ -214,7 +246,7 @@ def download(link: str, kind: Kind, folder: Path, report: Report) -> None:
             # as a full disk) into a DownloadError; the next line does that now.
             info = ydl.extract_info(link)
     except (DownloadError, UnavailableVideoError) as error:
-        report(Failed(plain_message(str(error))))
+        report(Failed(plain_message(str(error), signed_in)))
     except Exception as error:  # the window must always hear that it ended
         report(Failed(f"Something went wrong: {error}"))
     else:
@@ -231,13 +263,14 @@ def download(link: str, kind: Kind, folder: Path, report: Report) -> None:
             report(Failed("Nothing was downloaded from this link."))
 
 
-def plain_message(error: str) -> str:
+def plain_message(error: str, signed_in: bool = False) -> str:
     """What the window says for yt-dlp's error text: a plain message for the
-    failures met most often, otherwise yt-dlp's own text."""
+    failures met most often, otherwise yt-dlp's own text. `signed_in`: the
+    sign-in file was used."""
     text = error.removeprefix("ERROR: ")
     for pattern, message in PLAIN_MESSAGES:
         if re.search(pattern, text, re.IGNORECASE):
-            return message
+            return REDDIT_REFUSED if message == REDDIT and signed_in else message
     return text
 
 
