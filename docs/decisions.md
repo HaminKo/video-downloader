@@ -2,6 +2,18 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-12: A queue: links wait in a list of every download and run one after another; the selected row drives the status line, Play and Show in folder
+- **Reason:** the user wanted to paste the next link while one downloads. Downloads still run one at a time in one worker thread; the next starts only after the window has received the previous one's last report, so reports never mix. With a queue, the status line can't hold "the" result any more: a failure's reason would be replaced at once by the next download's progress. So every download gets a row (Video: the link until yt-dlp has looked it up, then the title; As: the choices; State), and the bar and status line show the selected row's progress or full message. A download that starts gets selected, unless the user selected another row since the previous one started. Play and Show in folder work on the selected row, also during a download; a double click on a finished row plays it. The choices stay usable during a download, and each link keeps the ones it was added with (MP3 stores no quality or subtitles). The link box empties after each accepted link. Remove (and the Delete key) takes the selected row out of the list, never a file; not the running one. Cancel stops the running download only; the next waiting one then starts. Closing the window drops the waiting links. This replaces To do 3's "one download at a time" (still true, now with a queue) and To do 12's "Play and Show in folder greyed out during a download".
+- **Who decided:** the user, on Claude's suggestions (To do 9, step A).
+- **Rejected:**
+  - a list of only the waiting links, the status line keeping the running one: a failure in the middle of a queue would show its reason only for a moment
+  - the status line always showing the running download, failure reasons only in the row: Tk's list rows can't wrap, so long messages would be cut off
+  - Cancel removing a selected waiting link too: Cancel sits next to Download, far from the list; Remove next to Play is clearer
+  - double click opening the folder (the to-do's first suggestion): one click has to select a row, and Show in folder is one more click
+  - keeping the link in the box after a download: the next paste would have to replace it; the cost is pasting a failed link again to retry
+  - grouping `download()`'s arguments into one object (left for this to-do by To do 7): the window keeps each link's choices in its row's record, so it isn't needed
+- **Also chosen, Claude's defaults that the user didn't discuss:** rows a quarter taller than a line of text (Tk's own row height cut off underscores at 150% scaling); As and State columns as wide as their longest text, Video takes the rest; Cancel selects the cancelled row so "Cancelling..." shows; after Remove, the running row is selected (nothing when none runs).
+
 ## 2026-11-12: An MP3 download keeps a file that was there before: yt-dlp keeps the file it converts from, the app deletes it only when it is new
 - **Reason:** on a site with no separate audio, yt-dlp took an MP4 of the same video that was already in the folder as the MP3's download, converted it and deleted it (measured; docs/research/yt-dlp-library.md "Files yt-dlp deletes"). With `keepvideo: True` (MP3 only) yt-dlp deletes nothing; the app notes the file the ExtractAudio step converts from (its hook's `info_dict["filepath"]`) and, after a finished download, deletes it unless it is the MP3 itself or was in the folder when the download started. That deletes exactly what yt-dlp deleted before, minus files that were there. When the MP4 is there, the MP3 is still made from it, without downloading again (the user's choice; faster, and on such sites it is the same file the download would get).
 - **Who decided:** the user, on Claude's suggestions (To do 14).
@@ -29,6 +41,7 @@ Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who d
 
 ## 2026-11-12: Play and Show in folder buttons under the status line; nothing opens by itself
 - **Reason:** after a download, one click plays the file or shows it in Explorer, instead of finding it in Downloads\Videos by hand. Play opens it in its default app (`os.startfile`; VLC also loads the `.en.srt` next to it). Show in folder runs `explorer /select,"PATH"` as one string with the path in quotes, because Explorer splits an unquoted path at its commas (measured; docs/research/opening-files.md). Play is greyed out until a download has finished, again after a failed one, and during a download. Show in folder is greyed out only during a download; with no finished file (none yet, a failure, or the file moved or deleted) it opens Downloads\Videos, making the folder if it isn't there. Play on a moved or deleted file says so in red. This replaces To do 3's "no Open folder button", which was left out then only to keep the first version small.
+- **Changed 2026-11-12 (To do 9):** both buttons now work on the selected row of the list, also during a download (see the queue entry above).
 - **Who decided:** the user, on Claude's suggestions (To do 12).
 - **Rejected:**
   - opening the file by itself after each download: a player popping up unasked gets annoying, worse with playlists (To do 8)
@@ -49,7 +62,7 @@ Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who d
   - yt-dlp's own text for a failed subtitle download (which fails the whole download), the first plan: the review found that a missing subtitle file (HTTP 404) matched "This video isn't available", which is wrong. It now has its own plain message (measured offline)
   - downloading the video anyway when its subtitles fail (the review's idea): more code for a failure not seen on YouTube yet; a Someday to-do if it happens
   - remembering the choice between runs: needs a settings file, as for the quality
-  - grouping the download choices into one object, now that `download()` takes 6 arguments: left for To do 9 (Queue), which has to store the choices per download
+  - grouping the download choices into one object, now that `download()` takes 6 arguments: left for To do 9 (Queue), which has to store the choices per download (To do 9 didn't need it: each row keeps its choices)
 
 ## 2026-11-11: Video quality: Best, 720p or 480p, as a height limit right after H.264 in the mp4 preset's sort
 - **Reason:** a lower quality saves space (on a long YouTube video, measured: 2677 MB at Best, 1513 MB at 720p, 562 MB at 480p). The limit (`res:720`) goes right after `vcodec:h264`, so files still play everywhere, and before `quality`, which YouTube fills from its own labels: after it, the limit does nothing (measured; docs/research/yt-dlp-library.md "Quality"). The choice is a row of radio buttons under MP4/MP3, greyed out while MP3 is chosen.
@@ -107,7 +120,7 @@ Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who d
   - file name: the video's title, cut to 150 bytes. Rejected: yt-dlp's default `Title [id]`, which never clashes but looks cluttered; the cost is that two videos with the same title share a name, so the second counts as "already there"
   - a file already there is skipped, with a message
   - a playlist or channel link downloads one video and says playlists aren't supported yet (without a setting, yt-dlp downloads all of it)
-  - one download at a time, no Cancel button; closing the window stops it (Cancel button added 2026-11-12: To do 13)
+  - one download at a time, no Cancel button; closing the window stops it (Cancel button added 2026-11-12: To do 13; a queue of links added 2026-11-12: To do 9)
   - the window opens 600 px wide at normal size, scaled with the display's DPI; that is also its smallest size
   - download folder fixed to Downloads\Videos; no "Open folder" button (replaced 2026-11-12: To do 12 added Play and Show in folder)
 

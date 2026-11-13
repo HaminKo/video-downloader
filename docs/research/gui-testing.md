@@ -29,6 +29,7 @@ Built in To do 2 (2026-11-11). Files: tests/gui/drive.py (open the window, type,
   2. Before each key press, drive.py takes the focus back if the link box lost it.
 - **Checked:** keys posted straight to the test window's own handle (`PostMessage`, so nothing reached any other window) were dropped (`ignored: ['2 q', '3 q']`). A second window that took the focus mid-typing: the focus was taken back and the link came out right. After the fix, 10 of 10 runs passed, but no one was typing then, so the real-typing case is covered only by the probe.
 - **Tried, didn't work:** telling Tk's own events apart from real ones with the event's `send_event` field (`%E`): it is false for `event_generate` keys too.
+- **Seen once since (2026-11-12, To do 9):** "didn't get the keyboard focus" from `focus()` in one of 24 tests (`test_mp3_choice_reaches_the_download[wide]`), in 1 of 3 runs; the other two runs passed fully. `focus_force()` itself didn't get the focus back, so Windows refused it, likely while the user was working in another window (not proven). No fix tried; if it comes back often, retrying `focus_force()` a few times is the next thing to try.
 
 ## Rejected
 - **OS-level input** (pywinauto, pyautogui, Windows' `SendInput`): it moves the real cursor and types into whichever window is in front, so a run could type into the user's editor. It also breaks if the user touches the mouse.

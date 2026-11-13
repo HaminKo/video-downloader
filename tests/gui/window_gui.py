@@ -12,20 +12,30 @@ from pathlib import Path
 import pytest
 from drive import (
     LINK,
+    LINK2,
     PROGRESS,
+    TITLES,
     VIDEO_TITLE,
     FakeDownload,
     FakeFiles,
     assert_inside_window,
     box,
     click,
+    click_row,
     open_window,
     press,
     type_text,
     wait_until,
 )
 
-from video_downloader.app import CANCELLED, FAILED_COLOR, TITLE, App
+from video_downloader.app import (
+    CANCELLED,
+    FAILED_COLOR,
+    PASTE_A_LINK,
+    TITLE,
+    WAITING,
+    App,
+)
 from video_downloader.downloader import FFMPEG_MISSING, Failed, Kind
 
 # The window's sizes, in screen pixels: None is the size it opens with, which
@@ -65,6 +75,12 @@ def finish(app: App, fake: FakeDownload, failure: Failed | None = None) -> None:
     wait_until(app, lambda: not app.busy, "the download to end")
 
 
+def rows(app: App) -> list[tuple[str, ...]]:
+    """The list's rows as shown: Video, As and State."""
+    tree = app.downloads
+    return [tuple(map(str, tree.item(row, "values"))) for row in tree.get_children()]
+
+
 def test_enter_in_link_box_starts_download(app: App, fake: FakeDownload) -> None:
     assert app.root.title() == TITLE
     type_text(app.link_entry, LINK)
@@ -72,6 +88,7 @@ def test_enter_in_link_box_starts_download(app: App, fake: FakeDownload) -> None
     press(app.link_entry, "Return")
     wait_for_progress(app, "Enter in the link box")
     assert fake.calls == [(LINK, Kind.MP4, app.folder, None, False)]
+    assert app.link.get() == "", "the box empties for the next link"
     finish(app, fake)
 
 
@@ -80,13 +97,58 @@ def test_download_button_shows_progress_then_done(app: App, fake: FakeDownload) 
     click(app.download_button)
     wait_for_progress(app, "clicking Download")
     assert app.progress_bar.cget("value") == 40
-    assert app.download_button.instate(["disabled"]), "one download at a time"
-    click(app.download_button)
+    assert rows(app) == [(VIDEO_TITLE, "MP4", "Downloading 40%")]
+    click(app.download_button)  # the box is empty now
+    assert app.status.get() == PASTE_A_LINK
     finish(app, fake)
-    assert len(fake.calls) == 1, "a greyed-out Download should do nothing"
+    assert len(fake.calls) == 1, "an empty box should add nothing"
     assert app.status.get().startswith(f"Done: {VIDEO_TITLE}.mp4"), app.status.get()
     assert app.progress_bar.cget("value") == 100
-    assert not app.download_button.instate(["disabled"])
+    assert rows(app) == [(VIDEO_TITLE, "MP4", "Done")]
+
+
+def test_second_link_waits_its_turn(app: App, fake: FakeDownload) -> None:
+    type_text(app.link_entry, LINK)
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "Enter in the link box")
+    first, second = TITLES[LINK], TITLES[LINK2]
+    click(app.mp3_button)  # the next link's choice; the running one stays MP4
+    type_text(app.link_entry, LINK2)
+    click(app.download_button)
+    assert rows(app) == [
+        (first, "MP4", "Downloading 40%"),
+        (LINK2, "MP3", "Waiting"),
+    ]
+    assert app.status.get() == PROGRESS, "the running one stays selected"
+    click_row(app.downloads, app.downloads.get_children()[1])
+    assert app.status.get() == WAITING
+    click_row(app.downloads, app.downloads.get_children()[0])
+
+    fake.finish()  # the first ends: the second starts and is selected
+    wait_until(app, lambda: len(fake.calls) == 2, "the second download to start")
+    wait_for_progress(app, "the first download ended")
+    assert fake.calls[1] == (LINK2, Kind.MP3, app.folder, None, False)
+    assert rows(app)[0] == (first, "MP4", "Done")
+    finish(app, fake)
+    assert app.status.get().startswith(f"Done: {second}.mp3"), app.status.get()
+    assert rows(app) == [(first, "MP4", "Done"), (second, "MP3", "Done")]
+
+
+def test_remove_a_waiting_link(app: App, fake: FakeDownload) -> None:
+    type_text(app.link_entry, LINK)
+    press(app.link_entry, "Return")
+    type_text(app.link_entry, LINK2)
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "two links")
+    running, waiting = app.downloads.get_children()
+    assert app.remove_button.instate(["disabled"]), "not the running one"
+    click_row(app.downloads, waiting)
+    assert not app.remove_button.instate(["disabled"])
+    click(app.remove_button)
+    assert app.downloads.get_children() == (running,)
+    assert app.status.get() == PROGRESS, "the running one is selected again"
+    finish(app, fake)
+    assert [call[0] for call in fake.calls] == [LINK], "the removed one never starts"
 
 
 def test_mp3_choice_reaches_the_download(app: App, fake: FakeDownload) -> None:
@@ -113,9 +175,9 @@ def test_quality_choice_reaches_the_download(app: App, fake: FakeDownload) -> No
     press(app.link_entry, "Return")
     wait_for_progress(app, "choosing 720p and pressing Enter")
     assert fake.calls == [(LINK, Kind.MP4, app.folder, 720, False)]
-    assert best.instate(["disabled"]), "no other quality during a download"
+    assert rows(app)[0][1] == "MP4 720p"
+    assert not best.instate(["disabled"]), "usable for the next link"
     finish(app, fake)
-    assert not best.instate(["disabled"])
 
 
 def test_subtitles_choice_reaches_the_download(app: App, fake: FakeDownload) -> None:
@@ -131,9 +193,9 @@ def test_subtitles_choice_reaches_the_download(app: App, fake: FakeDownload) -> 
     press(app.link_entry, "Return")
     wait_for_progress(app, "ticking subtitles and pressing Enter")
     assert fake.calls == [(LINK, Kind.MP4, app.folder, None, True)]
-    assert box.instate(["disabled"]), "no other choice during a download"
+    assert rows(app)[0][1] == "MP4, subtitles"
+    assert not box.instate(["disabled"]), "usable for the next link"
     finish(app, fake)
-    assert not box.instate(["disabled"])
     click(box)
     assert not app.subtitles.get(), "clicking again should untick it"
 
@@ -148,9 +210,10 @@ def test_failure_shows_a_plain_message_in_red(app: App, fake: FakeDownload) -> N
     assert_inside_window(app.status_label)
     assert_inside_window(app.show_button)  # the window grew to fit the message
     assert app.progress_bar.cget("value") == 0
-    assert not app.download_button.instate(["disabled"]), "can try again"
+    assert rows(app) == [(VIDEO_TITLE, "MP4", "Failed")]
 
-    click(app.download_button)  # the next try shows progress in the normal color
+    type_text(app.link_entry, LINK)  # the next try: progress in the normal color
+    click(app.download_button)
     wait_for_progress(app, "clicking Download again")
     assert str(app.status_label.cget("foreground")) == ""
     finish(app, fake)
@@ -169,11 +232,26 @@ def test_play_and_show_in_folder(
     type_text(app.link_entry, LINK)
     press(app.link_entry, "Return")
     wait_for_progress(app, "Enter in the link box")
-    assert app.show_button.instate(["disabled"]), "nothing opens during a download"
+    assert app.play_button.instate(["disabled"]), "nothing to play yet"
     finish(app, fake)
     click(app.play_button)
     click(app.show_button)
     assert files.calls[1:] == [("play", video), ("show", video)]
+
+    # During the next download, the finished one still plays: a double click
+    # on its row, or selecting it and clicking Play.
+    type_text(app.link_entry, LINK2)
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "a second link")
+    done, running = app.downloads.get_children()
+    assert app.play_button.instate(["disabled"]), "the running one has no file yet"
+    click_row(app.downloads, done, double=True)
+    assert files.calls[3:] == [("play", video)]
+    assert app.downloads.selection() == (done,)
+    click(app.show_button)
+    assert files.calls[4:] == [("show", video)]
+    finish(app, fake)
+    assert app.downloads.selection() == (done,), "the user's choice stays"
 
 
 def test_cancel_stops_the_download(app: App, fake: FakeDownload) -> None:
@@ -190,9 +268,11 @@ def test_cancel_stops_the_download(app: App, fake: FakeDownload) -> None:
     assert app.progress_bar.cget("value") == 0
     assert app.cancel_button.instate(["disabled"])
     assert app.play_button.instate(["disabled"]), "nothing to play"
-    assert (app.link.get(), app.kind.get()) == (LINK, Kind.MP3), "choices kept"
+    assert rows(app) == [(VIDEO_TITLE, "MP3", "Cancelled")]
+    assert app.kind.get() == Kind.MP3, "choices kept"
 
-    click(app.download_button)  # the next download works
+    type_text(app.link_entry, LINK)  # the next download works
+    click(app.download_button)
     wait_for_progress(app, "clicking Download after Cancel")
     finish(app, fake)
     assert app.status.get().startswith(f"Done: {VIDEO_TITLE}.mp3"), app.status.get()
@@ -208,9 +288,12 @@ def test_everything_fits_the_window(app: App) -> None:
         app.quality_label,
         *app.quality_buttons,
         app.subtitles_box,
+        app.downloads,
+        app.scrollbar,
         app.progress_bar,
         app.play_button,
         app.show_button,
+        app.remove_button,
     ):
         assert_inside_window(widget)
     entry_left, _, entry_right, _ = box(app.link_entry)

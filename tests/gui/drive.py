@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from ctypes import wintypes
 from pathlib import Path
+from tkinter import ttk
 
 from PIL import ImageGrab
 
@@ -23,12 +24,15 @@ from video_downloader.downloader import Cancelled, Done, Failed, Kind, Progress,
 
 SCREENSHOT_DIR = Path(tempfile.gettempdir()) / "video-downloader-screenshots"
 
-# The link the GUI test and the screenshots type.
+# The links the GUI test and the screenshots type.
 LINK = "https://www.youtube.com/watch?v=abc_123-XYZ"
+LINK2 = "https://www.youtube.com/watch?v=def_456-UVW"
 
-# What FakeDownload reports.
-PROGRESS = "Downloading video: 40% of 12 MB"
+# What FakeDownload reports: the video's title by its link (VIDEO_TITLE for
+# any other), and this progress.
 VIDEO_TITLE = "Test video"
+TITLES = {LINK: VIDEO_TITLE, LINK2: "Second video"}
+PROGRESS = "Downloading video: 40% of 12 MB"
 
 # Tk's key names for the printable characters that aren't letters or digits.
 KEY_NAMES = {
@@ -108,7 +112,8 @@ class FakeDownload:
         cancel: threading.Event,
     ) -> None:
         self.calls.append((link, kind, folder, height, subtitles))
-        report(Progress(PROGRESS, 40.0))
+        title = TITLES.get(link, VIDEO_TITLE)
+        report(Progress(PROGRESS, 40.0, title))
         deadline = time.monotonic() + 10
         while not (self.finished.is_set() or cancel.is_set()):
             if time.monotonic() > deadline:
@@ -118,7 +123,7 @@ class FakeDownload:
         if cancel.is_set():
             report(Cancelled())
         else:
-            report(self.failure or Done(folder / f"{VIDEO_TITLE}.{kind}", False))
+            report(self.failure or Done(folder / f"{title}.{kind}", False))
 
     def finish(self, failure: Failed | None = None) -> None:
         self.failure = failure
@@ -242,6 +247,20 @@ def click(widget: tk.Widget) -> None:
         widget.event_generate("<ButtonPress-1>", x=x, y=y)
         widget.event_generate("<ButtonRelease-1>", x=x, y=y)
     widget.update()
+
+
+def click_row(tree: ttk.Treeview, row: str, double: bool = False) -> None:
+    """Click the middle of a row in the list, twice for a double click."""
+    assert_inside_window(tree)
+    ignore_real_input(tree.winfo_toplevel())
+    x, y, width, height = tree.bbox(row) or (0, 0, 0, 0)
+    assert width, f"row {row} isn't shown in the list"
+    x, y = x + width // 2, y + height // 2
+    with sending():
+        for _ in range(2 if double else 1):
+            tree.event_generate("<ButtonPress-1>", x=x, y=y)
+            tree.event_generate("<ButtonRelease-1>", x=x, y=y)
+    tree.update()
 
 
 def box(widget: tk.Misc) -> tuple[int, int, int, int]:

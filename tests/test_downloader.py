@@ -185,9 +185,9 @@ def test_height_limit_picks_that_height_in_h264(
             {
                 "downloaded_bytes": 12 * 1024**2,
                 "total_bytes": 24 * 1024**2,
-                "info_dict": {"vcodec": "avc1", "acodec": "none"},
+                "info_dict": {"vcodec": "avc1", "acodec": "none", "title": "A cat"},
             },
-            Progress("Downloading video: 50% of 24 MB", 50.0),
+            Progress("Downloading video: 50% of 24 MB", 50.0, "A cat"),
         ),
         (
             {
@@ -443,8 +443,9 @@ def test_download_then_already_there(
     folder = tmp_path / "Videos"  # not there yet: download() makes it
     events = run(clip_link, kind, folder)
     assert any(isinstance(event, Progress) for event in events)
+    assert all(e.title == "clip" for e in events if isinstance(e, Progress))
     if kind == Kind.MP3:
-        assert Progress("Converting to MP3...", None) in events
+        assert Progress("Converting to MP3...", None, "clip") in events
     assert events[-1] == Done(folder / f"clip.{kind}", already_there=False)
     assert sorted(path.name for path in folder.iterdir()) == [f"clip.{kind}"]
 

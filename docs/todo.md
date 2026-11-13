@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: To do 9 (Queue and history)
+- Now: To do 9, step B (history)
 - Next: To do 10
 - Updated: 2026-11-13
 

@@ -174,6 +174,7 @@ PLAIN_MESSAGES = [
 class Progress:
     text: str
     percent: float | None  # None: busy, but how far along isn't known
+    title: str = ""  # the video's title, once yt-dlp has looked it up
 
 
 @dataclass(frozen=True)
@@ -324,7 +325,7 @@ def download(
             mp3_sources.add(Path(status["info_dict"]["filepath"]))
         text = STEP_TEXTS.get(status["postprocessor"])
         if status["status"] == "started" and text:
-            report(Progress(text, None))
+            report(Progress(text, None, status["info_dict"].get("title") or ""))
 
     # Without ffmpeg, yt-dlp doesn't fail on an MP4: it quietly picks a worse
     # file that needs no joining (docs/research/yt-dlp-library.md "Errors").
@@ -445,8 +446,9 @@ def plain_message(error: str, signed_in: bool = False) -> str:
 
 def progress(status: Mapping[str, Any]) -> Progress:
     """yt-dlp's progress report as the window shows it, for example
-    "Downloading video: 45% of 23 MB"."""
+    "Downloading video: 45% of 23 MB", with the video's title."""
     info = status.get("info_dict") or {}
+    title = info.get("title") or ""
     if info.get("vcodec") == "none":
         what = "Downloading audio"
     elif info.get("acodec") == "none":
@@ -459,12 +461,13 @@ def progress(status: Mapping[str, Any]) -> Progress:
     if size:
         percent = min(100.0, 100 * done / size)
         about = "" if total else "about "
-        return Progress(f"{what}: {percent:.0f}% of {about}{size_text(size)}", percent)
+        text = f"{what}: {percent:.0f}% of {about}{size_text(size)}"
+        return Progress(text, percent, title)
     index, count = status.get("fragment_index"), status.get("fragment_count")
     if index is not None and count:
         percent = min(100.0, 100 * index / count)
-        return Progress(f"{what}: {percent:.0f}%", percent)
-    return Progress(f"{what}: {size_text(done)} so far", None)
+        return Progress(f"{what}: {percent:.0f}%", percent, title)
+    return Progress(f"{what}: {size_text(done)} so far", None, title)
 
 
 def size_text(size: float) -> str:

@@ -12,11 +12,13 @@ from collections.abc import Callable
 
 from drive import (
     LINK,
+    LINK2,
     PROGRESS,
     SCREENSHOT_DIR,
     FakeDownload,
     click,
     open_window,
+    press,
     screenshot,
     type_text,
     wait_until,
@@ -60,12 +62,23 @@ def cancelled(app: App, fake: FakeDownload) -> None:
     wait_until(app, lambda: not app.busy, "the download to stop")
 
 
+def queued(app: App, fake: FakeDownload) -> None:
+    """Three links in the list: one done, one downloading, one waiting."""
+    done(app, fake)
+    type_text(app.link_entry, LINK2)
+    press(app.link_entry, "Return")
+    wait_until(app, lambda: app.status.get() == PROGRESS, "the second download")
+    type_text(app.link_entry, LINK)
+    press(app.link_entry, "Return")
+
+
 SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "start": opened,
     "progress": downloading,
     "done": done,
     "error": failed,
     "cancelled": cancelled,
+    "queue": queued,
 }
 
 

@@ -1,6 +1,9 @@
 """The main window: a link box, Download and Cancel buttons, MP4 or MP3, the
-video quality, English subtitles, progress, a status line, and Play and Show
-in folder buttons."""
+video quality, English subtitles, the list of downloads, progress, a status
+line, and Play, Show in folder and Remove buttons.
+
+Links wait in the list and download one after another. The bar, the status
+line and the buttons under them are about the selected row."""
 
 import os
 import queue
@@ -8,9 +11,12 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+import traceback
 from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
-from tkinter import ttk
+from tkinter import font, ttk
 
 from video_downloader import downloader
 from video_downloader.downloader import (
@@ -28,6 +34,8 @@ PASTE_A_LINK = "Paste a link to a video first."
 LOOKING_UP = "Looking up the video..."
 CANCELLING = "Cancelling..."
 CANCELLED = "Cancelled."
+WAITING = "Waiting: starts when the downloads above it have ended."
+NO_END = "Something went wrong: the download stopped without saying why."
 PLAYLIST_NOTE = (
     "The link is a playlist: the app only takes its first video "
     "(playlists aren't supported yet)."
@@ -51,11 +59,59 @@ WIDTH = 600
 # How often the window checks for news from the download, in milliseconds.
 CHECK_EVERY = 100
 
+# How many rows the list of downloads shows; it scrolls for more.
+LIST_ROWS = 6
+
 # link, MP4 or MP3, folder, report, the quality limit (None: the best),
 # English subtitles, cancel (set: stop and report Cancelled)
 type Download = Callable[
     [str, Kind, Path, Report, int | None, bool, threading.Event], None
 ]
+
+
+class State(StrEnum):
+    """Where a download in the list is, as its State column says it."""
+
+    WAITING = "Waiting"
+    DOWNLOADING = "Downloading"
+    CANCELLING = "Cancelling"
+    DONE = "Done"
+    ALREADY_THERE = "Already there"
+    FAILED = "Failed"
+    CANCELLED = "Cancelled"
+
+
+# The states of a download that has ended.
+ENDED = {State.DONE, State.ALREADY_THERE, State.FAILED, State.CANCELLED}
+
+
+@dataclass
+class Job:
+    """One row of the list: a link with the choices it was added with, and
+    what the window shows while its row is selected."""
+
+    link: str
+    kind: Kind
+    height: int | None  # the quality limit (None: the best); None for MP3
+    subtitles: bool  # False for MP3
+    state: State = State.WAITING
+    title: str = ""  # the video's title, once yt-dlp has looked it up
+    message: str = WAITING  # the status line
+    failed: bool = False  # the status line in dark red
+    percent: float | None = 0  # the bar; None moves it to and fro
+    file: Path | None = None  # the saved file, once done
+
+    def row(self) -> tuple[str, str, str]:
+        """The row's Video, As and State columns."""
+        what = str(self.kind).upper()
+        if self.height is not None:
+            what += f" {self.height}p"
+        if self.subtitles:
+            what += ", subtitles"
+        state = str(self.state)
+        if self.state is State.DOWNLOADING and self.percent is not None:
+            state += f" {self.percent:.0f}%"
+        return self.title or self.link, what, state
 
 
 class Files:
@@ -108,8 +164,8 @@ class App:
         self.run_download = download
         self.folder = folder or downloader.default_folder()
         self.files = files or Files()
-        self.last_file: Path | None = None  # the last finished download
-        self.busy = False
+        self.jobs: dict[str, Job] = {}  # by the list's row id
+        self.running = ""  # the row downloading now, if any
         self.cancel = threading.Event()  # set by Cancel; a new one per download
         self.events: queue.Queue[Event] = queue.Queue()
         self.next_check = ""  # the scheduled check_events(), while busy
@@ -174,30 +230,72 @@ class App:
         )
         self.subtitles_box.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
+        # Every download of this session, oldest at the top: one at a time,
+        # the others wait their turn. One row is selected at most.
+        listed = ttk.Frame(frame)
+        listed.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        listed.columnconfigure(0, weight=1)
+        self.downloads = ttk.Treeview(
+            listed,
+            columns=("video", "as", "state"),
+            show="headings",
+            height=LIST_ROWS,
+            selectmode="browse",
+        )
+        self.downloads.grid(row=0, column=0, sticky="ew")
+        self.scrollbar = ttk.Scrollbar(listed, command=self.downloads.yview)
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
+        self.downloads.configure(yscrollcommand=self.scrollbar.set)
+        # Tk's own row height cuts off the bottom of the text (an underscore)
+        # at 150% display scaling: rows a quarter taller than a line of text.
+        text_font = font.nametofont("TkDefaultFont")
+        line = text_font.metrics("linespace")
+        ttk.Style(root).configure("Treeview", rowheight=line + line // 4)
+        # As and State as wide as their longest text; Video takes the rest.
+        text_width = text_font.measure
+        columns = {
+            "video": ("Video", None),
+            "as": ("As", "MP4 720p, subtitles"),
+            "state": ("State", "Downloading 100%"),
+        }
+        for column, (heading, longest) in columns.items():
+            self.downloads.heading(column, text=heading, anchor="w")
+            if longest is not None:
+                width = text_width(longest) + text_width("    ")
+                self.downloads.column(column, width=width, stretch=False)
+        self.downloads.tag_configure("failed", foreground=FAILED_COLOR)
+        self.downloads.bind("<<TreeviewSelect>>", lambda _event: self.show_selected())
+        self.downloads.bind("<Double-Button-1>", self.on_double_click)
+        self.downloads.bind("<Delete>", lambda _event: self.remove_selected())
+
         self.progress_bar = ttk.Progressbar(frame, maximum=100)
-        self.progress_bar.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.progress_bar.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
         # Progress, the result and error messages. yt-dlp's messages can be
         # long: they wrap to the window's width instead of widening it, and
         # the window grows taller to show every line.
         self.status = tk.StringVar()
         self.status_label = ttk.Label(frame, textvariable=self.status, justify="left")
-        self.status_label.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self.status_label.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         self.status_label.bind("<Configure>", self.wrap_status)
         self.status.trace_add("write", lambda *_: self.fit_height_soon())
         root.resizable(True, False)  # fit_height() sets the height
 
-        # Play is greyed out until a download has finished; Show in folder
-        # opens the download folder until then.
+        # About the selected row. Play is greyed out unless it has a file;
+        # Show in folder opens the download folder then.
         actions = ttk.Frame(frame)
-        actions.grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        actions.grid(row=8, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.play_button = ttk.Button(actions, text="Play", command=self.play)
         self.play_button.grid(row=0, column=0, padx=(0, 8))
         # Wider than its text, as the other buttons are (in average characters).
         self.show_button = ttk.Button(
             actions, text="Show in folder", width=16, command=self.show_in_folder
         )
-        self.show_button.grid(row=0, column=1)
+        self.show_button.grid(row=0, column=1, padx=(0, 8))
+        self.remove_button = ttk.Button(
+            actions, text="Remove", command=self.remove_selected
+        )
+        self.remove_button.grid(row=0, column=2)
 
         # Only now: update_states() uses every widget above.
         self.kind.trace_add("write", lambda *_: self.update_states())
@@ -207,91 +305,214 @@ class App:
         self.link_entry.bind("<Return>", lambda _event: self.start_download())
         root.bind("<Destroy>", self.on_destroy)
 
+    @property
+    def busy(self) -> bool:
+        """A download is running."""
+        return bool(self.running)
+
     def start_download(self) -> None:
-        """Start downloading the link in the background; one at a time."""
-        if self.busy:
-            return
+        """Add the link in the box to the list with the choices made now, and
+        empty the box for the next one. It starts at once when nothing is
+        downloading, otherwise when the downloads above it have ended."""
         link = self.link.get().strip()
         if not link:
             self.show_status(PASTE_A_LINK)
             return
+        kind = Kind(self.kind.get())
+        mp4 = kind == Kind.MP4  # the quality and subtitles are for MP4 only
+        job = Job(
+            link,
+            kind,
+            QUALITIES[self.quality.get()] if mp4 else None,
+            self.subtitles.get() and mp4,
+        )
+        row = self.downloads.insert("", "end", values=job.row())
+        self.jobs[row] = job
+        self.downloads.see(row)
+        self.link.set("")
+        if self.busy:
+            self.update_states()
+        else:
+            self.start_next(select=True)
+
+    def start_next(self, select: bool) -> None:
+        """Start the first waiting download in the background, if there is
+        one, and select its row when `select` is true."""
+        waiting = (r for r, job in self.jobs.items() if job.state is State.WAITING)
+        self.running = next(waiting, "")
+        if not self.running:
+            self.update_states()
+            return
+        job = self.jobs[self.running]
+        job.state, job.message, job.percent = State.DOWNLOADING, LOOKING_UP, None
         self.cancel = threading.Event()
-        self.set_busy(True)
-        self.show_progress(None)
-        self.show_status(LOOKING_UP)
         threading.Thread(
-            target=self.run_download,
-            args=(
-                link,
-                Kind(self.kind.get()),
-                self.folder,
-                self.events.put,
-                # The downloader ignores these two for MP3.
-                QUALITIES[self.quality.get()],
-                self.subtitles.get(),
-                self.cancel,
-            ),
+            target=self.run_job,
+            args=(job, self.cancel),
             daemon=True,  # closing the window stops the download
         ).start()
-        self.next_check = self.root.after(CHECK_EVERY, self.check_events)
+        if not self.next_check:
+            self.next_check = self.root.after(CHECK_EVERY, self.check_events)
+        if select:
+            self.select(self.running)
+        self.update_row(self.running)
+
+    def run_job(self, job: Job, cancel: threading.Event) -> None:
+        """Download the job's link; runs in the background. The window hears
+        exactly one end from it (Done, Failed or Cancelled), and nothing
+        after it, even when the download raises or returns without one: the
+        next waiting link starts only then, and its reports must not mix
+        with this one's."""
+        ended = False
+
+        def report(event: Event) -> None:
+            nonlocal ended
+            if not ended:
+                self.events.put(event)
+                ended = not isinstance(event, Progress)
+
+        try:
+            self.run_download(
+                job.link,
+                job.kind,
+                self.folder,
+                report,
+                job.height,
+                job.subtitles,
+                cancel,
+            )
+        except Exception as error:
+            traceback.print_exc()  # the details, in the terminal
+            report(Failed(f"Something went wrong: {error}"))
+        report(Failed(NO_END))  # dropped when it has ended already
 
     def cancel_download(self) -> None:
-        """Ask the running download to stop. It reports Cancelled once it has
-        stopped and deleted what it had saved: at once while downloading,
-        after the step while ffmpeg joins or converts. One that finishes
-        before it notices reports Done as usual: the file is there."""
-        if not self.busy or self.cancel.is_set():
+        """Ask the running download to stop, and select its row. It reports
+        Cancelled once it has stopped and deleted what it had saved: at once
+        while downloading, after the step while ffmpeg joins or converts. One
+        that finishes before it notices reports Done as usual: the file is
+        there. The next waiting link starts then."""
+        job = self.jobs.get(self.running)
+        if job is None or job.state is not State.DOWNLOADING:
             return
         self.cancel.set()
-        self.show_status(CANCELLING)
-        self.show_progress(None)
-        self.update_states()
+        job.state, job.message, job.percent = State.CANCELLING, CANCELLING, None
+        self.select(self.running)
+        self.update_row(self.running)
 
     def check_events(self) -> None:
-        """Show what the download reported since the last check."""
+        """Show what the running download reported since the last check; when
+        it has ended, start the next waiting one."""
         self.next_check = ""
-        while not self.events.empty():
+        row = self.running  # only the running download reports (run_job())
+        job = self.jobs.get(row)  # Remove skips the running row
+        changed = False
+        while job is not None and job.state not in ENDED and not self.events.empty():
             match self.events.get():
                 # After Cancel, progress reported before it stopped would
                 # replace "Cancelling...".
-                case Progress(text, percent) if not self.cancel.is_set():
-                    self.show_status(text)
-                    self.show_progress(percent)
+                case Progress() as progress if job.state is State.DOWNLOADING:
+                    job.message, job.percent = progress.text, progress.percent
+                    job.title = progress.title or job.title
                 case Done() as done:
-                    self.last_file = done.path
-                    self.show_status(done_message(done))
-                    self.show_progress(100)
-                    self.set_busy(False)
+                    there = done.already_there
+                    job.state = State.ALREADY_THERE if there else State.DONE
+                    job.message, job.percent = done_message(done), 100
+                    job.file = done.path
+                    # yt-dlp reports no title for a file that is already there.
+                    job.title = job.title or done.path.stem
                 case Failed(message):
-                    self.last_file = None
-                    self.show_status(message, failed=True)
-                    self.show_progress(0)
-                    self.set_busy(False)
+                    job.state, job.message, job.percent = State.FAILED, message, 0
+                    job.failed = True
                 case Cancelled():
-                    self.last_file = None
-                    self.show_status(CANCELLED)
-                    self.show_progress(0)
-                    self.set_busy(False)
-        if self.busy:
+                    job.state, job.message, job.percent = State.CANCELLED, CANCELLED, 0
+                case _:
+                    continue
+            changed = True
+        # Once per check, not per report: a fast download reports many times
+        # in 0.1 s, and only the last one shows.
+        if job is not None and changed:
+            self.update_row(row)
+            if job.state in ENDED:
+                # The next one gets selected unless another row was selected
+                # since this one started: the user is looking at that one.
+                self.start_next(select=self.selected() in (row, ""))
+        if self.busy and not self.next_check:
             self.next_check = self.root.after(CHECK_EVERY, self.check_events)
 
-    def play(self) -> None:
-        """Open the last finished download in its default app."""
-        file = self.last_file
-        if file is None:  # Play is greyed out then
-            return
-        if file.is_file():
-            self.files.play(file)
-        else:  # moved or deleted since: say so once, then grey Play out
-            folder = shown_folder(file.parent)
-            self.show_status(GONE.format(name=file.name, folder=folder), failed=True)
-            self.last_file = None
+    def selected(self) -> str:
+        """The selected row, or "" when none is."""
+        rows = self.downloads.selection()
+        return rows[0] if rows else ""
+
+    def selected_file(self) -> Path | None:
+        """The selected row's file, if it has one."""
+        job = self.jobs.get(self.selected())
+        return job.file if job else None
+
+    def select(self, row: str) -> None:
+        self.downloads.selection_set(row)
+        self.downloads.see(row)
+        self.show_selected()
+
+    def update_row(self, row: str) -> None:
+        """Show what changed in the row's job: in the row, and under the list
+        when the row is selected."""
+        job = self.jobs[row]
+        failed = ("failed",) if job.state is State.FAILED else ()
+        self.downloads.item(row, values=job.row(), tags=failed)
+        if row == self.selected():
+            self.show_selected()
+        else:
             self.update_states()
 
+    def show_selected(self) -> None:
+        """Show the selected row's message and progress under the list."""
+        job = self.jobs.get(self.selected())
+        if job is not None:
+            self.show_status(job.message, job.failed)
+            self.show_progress(job.percent)
+        self.update_states()
+
+    def remove_selected(self) -> None:
+        """Take the selected row out of the list: a waiting link won't be
+        downloaded. The file of a finished one stays where it is. Not the
+        running one: Cancel stops that."""
+        row = self.selected()
+        if not row or row == self.running:
+            return
+        self.downloads.delete(row)
+        del self.jobs[row]
+        if self.running:
+            self.select(self.running)
+        else:
+            self.show_status("")
+            self.show_progress(0)
+            self.update_states()
+
+    def on_double_click(self, event: tk.Event) -> None:
+        # A double click on a row plays it; on a heading, nothing.
+        if self.downloads.identify_row(event.y):
+            self.play()
+
+    def play(self) -> None:
+        """Open the selected row's file in its default app."""
+        row = self.selected()
+        job = self.jobs.get(row)
+        if job is None or job.file is None:  # Play is greyed out then
+            return
+        if job.file.is_file():
+            self.files.play(job.file)
+        else:  # moved or deleted since: say so, then grey Play out
+            folder = shown_folder(job.file.parent)
+            job.message = GONE.format(name=job.file.name, folder=folder)
+            job.failed, job.file = True, None
+            self.update_row(row)
+
     def show_in_folder(self) -> None:
-        """Open Explorer with the last finished download selected, or the
-        download folder when there is none (or it was moved or deleted)."""
-        file = self.last_file
+        """Open Explorer with the selected row's file selected, or the
+        download folder when it has none (or it was moved or deleted)."""
+        file = self.selected_file()
         if file is not None and file.is_file():
             self.files.show(file)
         else:
@@ -330,31 +551,22 @@ class App:
         self.status.set(text)
         self.status_label.configure(foreground=FAILED_COLOR if failed else "")
 
-    def set_busy(self, busy: bool) -> None:
-        self.busy = busy
-        self.update_states()
-
     def update_states(self) -> None:
-        """Grey out what can't be used now: every choice and button during a
-        download but Cancel, which only works then (once), the video quality
-        and subtitles while MP3 is chosen, and Play until a download has
-        finished."""
-        idle = not self.busy
-        cancellable = self.busy and not self.cancel.is_set()
-        self.cancel_button.state(["!disabled"] if cancellable else ["disabled"])
-        video = idle and self.kind.get() == Kind.MP4
-        playable = idle and self.last_file is not None
-        idle_widgets = (
-            self.download_button,
-            self.mp4_button,
-            self.mp3_button,
-            self.show_button,
-        )
-        for widget in idle_widgets:
-            widget.state(["!disabled"] if idle else ["disabled"])
+        """Grey out what can't be used now: Cancel unless a download is
+        running (once), the video quality and subtitles while MP3 is chosen,
+        Play unless the selected row has a file, and Remove unless a row is
+        selected that isn't running."""
+        job = self.jobs.get(self.running)
+        enabled: dict[ttk.Widget, bool] = {
+            self.cancel_button: job is not None and job.state is State.DOWNLOADING,
+            self.play_button: self.selected_file() is not None,
+            self.remove_button: self.selected() not in ("", self.running),
+        }
+        video = self.kind.get() == Kind.MP4
         for widget in (self.quality_label, *self.quality_buttons, self.subtitles_box):
-            widget.state(["!disabled"] if video else ["disabled"])
-        self.play_button.state(["!disabled"] if playable else ["disabled"])
+            enabled[widget] = video
+        for widget, on in enabled.items():
+            widget.state(["!disabled"] if on else ["disabled"])
 
     def show_progress(self, percent: float | None) -> None:
         """Fill the bar to `percent`; None makes it move to and fro instead."""

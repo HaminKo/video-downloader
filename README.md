@@ -8,17 +8,13 @@ It does not download from DRM-protected services (Netflix, Disney+, Spotify and 
 Downloading works, and when a download fails the window says why in plain words. Reddit works once you've signed in ([Signing in](docs/signing-in.md)). What comes next is in [docs/todo.md](docs/todo.md).
 
 ## Using it
-Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, its quality and whether you want English subtitles, then press Download (or Enter). The bar and the line under it show the progress.
-- Files go to the **Videos** folder inside your Downloads folder, named after the video's title.
-- MP4s use H.264 video with AAC sound, so they play everywhere (Windows' own player, phones).
-- **Video quality:** **Best** is the best that plays everywhere, which on YouTube means at most 1080p. **720p** and **480p** save space: on a long YouTube video, 720p was a little over half the size of Best, and 480p about a fifth. A video with nothing that small comes in its smallest size above it. A 720p or 480p file has the quality after its title (`Title (720p).mp4`), so it sits next to a copy at Best instead of counting as already there. The choice starts at Best each time the app opens.
-- **English subtitles:** saved as a separate file next to the video (`Title.en.srt`), because Windows can't read subtitles inside an MP4. You get the video's real English subtitles when it has them, otherwise the site's automatic ones (on YouTube, sometimes its automatic translation into English). A video without English subtitles still downloads, and the window says so. If the video is already there, only the subtitles are added. If the subtitles can't be downloaded, nothing is saved and the window says so: try again later, or untick the box. The box starts unticked each time the app opens.
-- A file that is already there isn't downloaded again; the window says so.
-- **Play** opens the file you just downloaded in your default player (VLC also picks up the subtitles next to it). **Show in folder** opens the Videos folder with that file selected. Nothing opens by itself. Before the first download, and after a failed one, Play is greyed out and Show in folder just opens the folder.
-- One download at a time. **Cancel** stops it: the window says "Cancelled." and deletes what that download had saved (half-downloaded pieces, and its subtitles); files that were in the folder before are never touched (a half-downloaded file left by closing the window included). While ffmpeg joins video and audio or converts to MP3, Cancel takes effect when that step is done. Closing the window also stops a download, but leaves the half-downloaded file, which yt-dlp continues from if you download the same video again.
-- A link to a playlist or channel downloads only its first video, and the window says so.
-- When a download fails, the line under the bar says why in plain words, in red: not a link, a site or page with no video, no internet, a private or removed video, one that needs signing in, or ffmpeg missing. Anything else shows yt-dlp's own message. yt-dlp's full message is also printed in the terminal the app runs from.
-- Reddit only gives a post's video to people who are signed in. To sign in, you export Reddit's sign-in from your browser once, as a file the app uses: see [Signing in](docs/signing-in.md). The app doesn't sign in to YouTube (it could get the account banned).
+Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, its quality (Best, 720p or 480p) and whether you want English subtitles, then press Download (or Enter).
+- Paste more links while one downloads: they wait in the list and download one after another, each with the choices it was added with.
+- Files go to the **Videos** folder inside your Downloads folder: MP4s that play everywhere (H.264 video with AAC sound), or MP3s.
+- Click a row in the list to see its progress or message. **Play** and **Show in folder** open its file, **Remove** takes it out of the list (never deletes a file), and **Cancel** stops the running download.
+- When a download fails, the window says why in plain words. Reddit needs a sign-in file: see [Signing in](docs/signing-in.md).
+
+Everything in detail: [Using the app](docs/using.md).
 
 ## Install and run
 Needs Windows, Python 3.13 or newer, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com). All commands are for PowerShell.
