@@ -1,3 +1,5 @@
+import os
+import subprocess
 import time
 import tkinter as tk
 from collections.abc import Iterator
@@ -7,6 +9,7 @@ import pytest
 
 from video_downloader.app import (
     FAILED_COLOR,
+    GONE,
     LOOKING_UP,
     NO_SUBTITLES,
     PASTE_A_LINK,
@@ -15,7 +18,10 @@ from video_downloader.app import (
     TITLE,
     WIDTH,
     App,
+    Files,
     done_message,
+    show_command,
+    shown_folder,
     window_width,
 )
 from video_downloader.downloader import Done, Event, Failed, Kind, Progress, Report
@@ -47,17 +53,39 @@ class FakeDownload:
             report(event)
 
 
+class FakeFiles(Files):
+    """Opens nothing: remembers what it was asked to open, as ("play", path),
+    ("show", path) or ("open_folder", path)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Path]] = []
+
+    def play(self, file: Path) -> None:
+        self.calls.append(("play", file))
+
+    def show(self, file: Path) -> None:
+        self.calls.append(("show", file))
+
+    def open_folder(self, folder: Path) -> None:
+        self.calls.append(("open_folder", folder))
+
+
 @pytest.fixture
 def fake() -> FakeDownload:
     return FakeDownload()
 
 
 @pytest.fixture
-def app(fake: FakeDownload, tmp_path: Path) -> Iterator[App]:
+def files() -> FakeFiles:
+    return FakeFiles()
+
+
+@pytest.fixture
+def app(fake: FakeDownload, files: FakeFiles, tmp_path: Path) -> Iterator[App]:
     root = tk.Tk()
     root.withdraw()  # build the window without showing it
     try:
-        yield App(root, fake, tmp_path)
+        yield App(root, fake, tmp_path, files)
     finally:
         root.destroy()
 
@@ -77,6 +105,10 @@ def test_window_has_its_parts(app: App) -> None:
     assert app.kind.get() == Kind.MP4
     assert app.status.get() == ""
     assert app.root.minsize()[0] == window_width(app.root)
+    assert app.play_button.cget("text") == "Play"
+    assert app.show_button.cget("text") == "Show in folder"
+    assert app.play_button.instate(["disabled"]), "nothing to play yet"
+    assert not app.show_button.instate(["disabled"])
 
 
 def test_window_width_follows_the_display_scaling(
@@ -182,6 +214,88 @@ def test_failure_shows_the_message(app: App, fake: FakeDownload) -> None:
     assert app.status.get() == LOOKING_UP
     assert str(app.status_label.cget("foreground")) == ""
     wait_until_done(app)
+
+
+def test_play_and_show_in_folder_open_the_last_download(
+    app: App, fake: FakeDownload, files: FakeFiles, tmp_path: Path
+) -> None:
+    app.play_button.invoke()  # greyed out: does nothing
+    app.show_button.invoke()
+    assert files.calls == [("open_folder", tmp_path)], "no download yet: the folder"
+
+    video = tmp_path / "Test video.mp4"
+    video.write_bytes(b"")
+    fake.events = [Done(video, already_there=False)]
+    app.link.set(LINK)
+    app.download_button.invoke()
+    buttons = [app.play_button, app.show_button]
+    assert all(b.instate(["disabled"]) for b in buttons), "greyed out while busy"
+    wait_until_done(app)
+    assert not any(b.instate(["disabled"]) for b in buttons)
+    app.play_button.invoke()
+    app.show_button.invoke()
+    assert files.calls[1:] == [("play", video), ("show", video)]
+
+
+def test_after_a_failure_play_is_greyed_out_again(
+    app: App, fake: FakeDownload, files: FakeFiles, tmp_path: Path
+) -> None:
+    video = tmp_path / "Test video.mp4"
+    video.write_bytes(b"")
+    fake.events = [Done(video, already_there=True)]
+    app.link.set(LINK)
+    app.download_button.invoke()
+    wait_until_done(app)
+    assert not app.play_button.instate(["disabled"]), "a file already there plays"
+    fake.events = [Failed("No.")]
+    app.download_button.invoke()
+    wait_until_done(app)
+    assert app.play_button.instate(["disabled"]), "the earlier file is not played"
+    app.show_button.invoke()
+    assert files.calls == [("open_folder", tmp_path)]
+
+
+def test_a_moved_or_deleted_file_is_not_opened(
+    app: App, fake: FakeDownload, files: FakeFiles, tmp_path: Path
+) -> None:
+    video = tmp_path / "Test video.mp4"  # never written: it is gone
+    fake.events = [Done(video, already_there=False)]
+    app.link.set(LINK)
+    app.download_button.invoke()
+    wait_until_done(app)
+    app.play_button.invoke()
+    folder = shown_folder(tmp_path)
+    assert app.status.get() == GONE.format(name=video.name, folder=folder)
+    assert app.status.get().startswith("Can't play Test video.mp4: it isn't in ")
+    assert str(app.status_label.cget("foreground")) == FAILED_COLOR
+    assert app.play_button.instate(["disabled"]), "said once, then greyed out"
+    app.show_button.invoke()
+    assert files.calls == [("open_folder", tmp_path)], "the folder instead"
+
+
+def test_files_opens_with_windows_own_tools(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    opened: list[str | Path] = []
+    monkeypatch.setattr(os, "startfile", opened.append)
+    monkeypatch.setattr(subprocess, "Popen", opened.append)
+    video = tmp_path / "Clip.mp4"
+    folder = tmp_path / "Videos"  # not there yet
+    Files().play(video)
+    Files().show(video)
+    Files().open_folder(folder)
+    assert opened == [video, show_command(video), folder]
+    assert folder.is_dir(), "the folder is made first"
+
+
+def test_show_command_quotes_the_path() -> None:
+    # Unquoted, Explorer would split the path at its commas.
+    path = Path(r"C:\Videos\Cats, dogs & más.mp4")
+    explorer = Path(os.environ["WINDIR"]) / "explorer.exe"
+    assert explorer.is_file()
+    assert show_command(path) == (
+        f'"{explorer}" ' + r'/select,"C:\Videos\Cats, dogs & más.mp4"'
+    )
 
 
 def test_done_message_names_the_folder_from_home() -> None:

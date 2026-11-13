@@ -18,7 +18,7 @@ from pathlib import Path
 
 from PIL import ImageGrab
 
-from video_downloader.app import App, start
+from video_downloader.app import App, Files, start
 from video_downloader.downloader import Done, Failed, Kind, Progress, Report
 
 SCREENSHOT_DIR = Path(tempfile.gettempdir()) / "video-downloader-screenshots"
@@ -117,6 +117,23 @@ class FakeDownload:
         self.finished.set()
 
 
+class FakeFiles(Files):
+    """Opens nothing: remembers what Play and Show in folder asked to open, as
+    ("play", path), ("show", path) or ("open_folder", path)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Path]] = []
+
+    def play(self, file: Path) -> None:
+        self.calls.append(("play", file))
+
+    def show(self, file: Path) -> None:
+        self.calls.append(("show", file))
+
+    def open_folder(self, folder: Path) -> None:
+        self.calls.append(("open_folder", folder))
+
+
 def wait_until(app: App, condition: Callable[[], bool], what: str) -> None:
     """Let the window run (it checks for news from the download every 0.1 s)
     until condition() is true; fail after 5 s."""
@@ -127,13 +144,21 @@ def wait_until(app: App, condition: Callable[[], bool], what: str) -> None:
         time.sleep(0.01)
 
 
-def open_window(download: FakeDownload, width: int | None = None) -> App:
+def open_window(
+    download: FakeDownload,
+    width: int | None = None,
+    folder: Path | None = None,
+    files: FakeFiles | None = None,
+) -> App:
     """Start the window as main() does, on top, with the link box focused.
 
     download: the fake that stands in for yt-dlp.
     width: in screen pixels; None keeps the size the window opens with.
+    folder: where the window says files go; None: the real Downloads\\Videos,
+    which the fakes never write to.
+    files: the fake that stands in for opening files (default: a new one).
     """
-    app = start(download)
+    app = start(download, folder, files or FakeFiles())
     root = app.root
     try:
         root.attributes("-topmost", True)

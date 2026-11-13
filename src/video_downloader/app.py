@@ -1,7 +1,10 @@
 """The main window: a link box, MP4 or MP3, the video quality, English
-subtitles, a Download button, progress and a status line."""
+subtitles, a Download button, progress, a status line, and Play and Show in
+folder buttons."""
 
+import os
 import queue
+import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -20,6 +23,7 @@ PLAYLIST_NOTE = (
     "(playlists aren't supported yet)."
 )
 NO_SUBTITLES = "No English subtitles found."
+GONE = "Can't play {name}: it isn't in {folder} anymore."
 
 # The video quality choices and their limit as the downloader takes it (720
 # for 720p). "Best" (None) is the best that plays everywhere: 1080p on
@@ -42,11 +46,43 @@ CHECK_EVERY = 100
 type Download = Callable[[str, Kind, Path, Report, int | None, bool], None]
 
 
+class Files:
+    """Opens files and folders for the user; the tests pass a fake, so nothing
+    opens."""
+
+    def play(self, file: Path) -> None:
+        """Open the file in its default app (VLC, Media Player...)."""
+        os.startfile(file)
+
+    def show(self, file: Path) -> None:
+        """Open Explorer at the file's folder, with the file selected."""
+        # Not waited for: explorer.exe takes about 0.3 s, and returns 1 even
+        # when it worked.
+        subprocess.Popen(show_command(file))
+
+    def open_folder(self, folder: Path) -> None:
+        """Open the folder in Explorer, making it first if it isn't there."""
+        folder.mkdir(parents=True, exist_ok=True)
+        os.startfile(folder)
+
+
+def show_command(file: Path) -> str:
+    """Explorer's command line that shows `file` selected. A string, not a
+    list: Python quotes a list's parts only when they hold a space, and
+    Explorer splits an unquoted path at its commas
+    (docs/research/opening-files.md). Explorer's full path, because Windows
+    looks for a bare `explorer` in Python's folder and the current folder
+    first."""
+    explorer = Path(os.environ["WINDIR"]) / "explorer.exe"
+    return f'"{explorer}" /select,"{file}"'
+
+
 class App:
     """The window's widgets and what happens when they are used.
 
     download: what fetches the video (yt-dlp; the tests pass a fake).
     folder: where files go (default: Videos inside Downloads).
+    files: what opens the downloaded file or its folder (the tests pass a fake).
     """
 
     def __init__(
@@ -54,10 +90,13 @@ class App:
         root: tk.Tk,
         download: Download = downloader.download,
         folder: Path | None = None,
+        files: Files | None = None,
     ) -> None:
         self.root = root
         self.run_download = download
         self.folder = folder or downloader.default_folder()
+        self.files = files or Files()
+        self.last_file: Path | None = None  # the last finished download
         self.busy = False
         self.events: queue.Queue[Event] = queue.Queue()
         self.next_check = ""  # the scheduled check_events(), while busy
@@ -114,7 +153,6 @@ class App:
             frame, text="English subtitles", variable=self.subtitles
         )
         self.subtitles_box.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        self.kind.trace_add("write", lambda *_: self.update_states())
 
         self.progress_bar = ttk.Progressbar(frame, maximum=100)
         self.progress_bar.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -128,6 +166,22 @@ class App:
         self.status_label.bind("<Configure>", self.wrap_status)
         self.status.trace_add("write", lambda *_: self.fit_height_soon())
         root.resizable(True, False)  # fit_height() sets the height
+
+        # Play is greyed out until a download has finished; Show in folder
+        # opens the download folder until then.
+        actions = ttk.Frame(frame)
+        actions.grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.play_button = ttk.Button(actions, text="Play", command=self.play)
+        self.play_button.grid(row=0, column=0, padx=(0, 8))
+        # Wider than its text, as the other buttons are (in average characters).
+        self.show_button = ttk.Button(
+            actions, text="Show in folder", width=16, command=self.show_in_folder
+        )
+        self.show_button.grid(row=0, column=1)
+
+        # Only now: update_states() uses every widget above.
+        self.kind.trace_add("write", lambda *_: self.update_states())
+        self.update_states()
 
         self.link_entry.focus_set()
         self.link_entry.bind("<Return>", lambda _event: self.start_download())
@@ -168,15 +222,39 @@ class App:
                     self.show_status(text)
                     self.show_progress(percent)
                 case Done() as done:
+                    self.last_file = done.path
                     self.show_status(done_message(done))
                     self.show_progress(100)
                     self.set_busy(False)
                 case Failed(message):
+                    self.last_file = None
                     self.show_status(message, failed=True)
                     self.show_progress(0)
                     self.set_busy(False)
         if self.busy:
             self.next_check = self.root.after(CHECK_EVERY, self.check_events)
+
+    def play(self) -> None:
+        """Open the last finished download in its default app."""
+        file = self.last_file
+        if file is None:  # Play is greyed out then
+            return
+        if file.is_file():
+            self.files.play(file)
+        else:  # moved or deleted since: say so once, then grey Play out
+            folder = shown_folder(file.parent)
+            self.show_status(GONE.format(name=file.name, folder=folder), failed=True)
+            self.last_file = None
+            self.update_states()
+
+    def show_in_folder(self) -> None:
+        """Open Explorer with the last finished download selected, or the
+        download folder when there is none (or it was moved or deleted)."""
+        file = self.last_file
+        if file is not None and file.is_file():
+            self.files.show(file)
+        else:
+            self.files.open_folder(self.folder)
 
     def on_destroy(self, event: tk.Event) -> None:
         # Drop what is still scheduled, or it runs later without its window
@@ -216,15 +294,23 @@ class App:
         self.update_states()
 
     def update_states(self) -> None:
-        """Grey out what can't be used now: every choice and the Download
-        button during a download, the video quality and subtitles while MP3
-        is chosen."""
+        """Grey out what can't be used now: every choice and button during a
+        download, the video quality and subtitles while MP3 is chosen, and
+        Play until a download has finished."""
         idle = not self.busy
         video = idle and self.kind.get() == Kind.MP4
-        for widget in (self.download_button, self.mp4_button, self.mp3_button):
+        playable = idle and self.last_file is not None
+        idle_widgets = (
+            self.download_button,
+            self.mp4_button,
+            self.mp3_button,
+            self.show_button,
+        )
+        for widget in idle_widgets:
             widget.state(["!disabled"] if idle else ["disabled"])
         for widget in (self.quality_label, *self.quality_buttons, self.subtitles_box):
             widget.state(["!disabled"] if video else ["disabled"])
+        self.play_button.state(["!disabled"] if playable else ["disabled"])
 
     def show_progress(self, percent: float | None) -> None:
         """Fill the bar to `percent`; None makes it move to and fro instead."""
@@ -238,10 +324,15 @@ class App:
             bar.configure(mode="determinate", value=percent)
 
 
+def shown_folder(folder: Path) -> Path:
+    """The folder as the status line names it: from the home folder on, when
+    it is inside it."""
+    home = Path.home()
+    return folder.relative_to(home) if folder.is_relative_to(home) else folder
+
+
 def done_message(done: Done) -> str:
-    folder = done.path.parent
-    if folder.is_relative_to(Path.home()):
-        folder = folder.relative_to(Path.home())
+    folder = shown_folder(done.path.parent)
     if done.already_there:
         message = f"Already there, not downloaded again: {done.path.name} (in {folder})"
     else:
@@ -259,14 +350,19 @@ def window_width(root: tk.Misc) -> int:
     return round(WIDTH * root.winfo_fpixels("1i") / 96)
 
 
-def start(download: Download = downloader.download) -> App:
-    """Build the window as the user sees it; the GUI test starts it this way too."""
+def start(
+    download: Download = downloader.download,
+    folder: Path | None = None,
+    files: Files | None = None,
+) -> App:
+    """Build the window as the user sees it; the GUI test starts it this way
+    too. The parameters are App's."""
     if sys.platform == "win32":
         # Without this, Windows scales the window up and the text looks blurry.
         import ctypes
 
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    return App(tk.Tk(), download)
+    return App(tk.Tk(), download, folder, files)
 
 
 def main() -> None:

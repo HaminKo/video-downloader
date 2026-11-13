@@ -41,6 +41,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - MP4 and MP3 use yt-dlp's own `-t mp4` (H.264 + AAC, plays everywhere) and `-t mp3` presets.
 - Video quality: Best, 720p or 480p, as `res:N` right after `vcodec:h264` in the mp4 sort (before `quality`, or it does nothing); 720p and 480p files are named `Title (720p).mp4`.
 - Subtitles: a checkbox (MP4 only), English only, saved as a separate `Title.en.srt` next to the video, never inside the MP4 (Windows can't read them there).
+- Play (default app, `os.startfile`) and Show in folder (`explorer /select,"PATH"`, one string, path quoted) buttons under the status line; nothing opens by itself after a download.
 - Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.
 - The GUI test drives the window with Tk's own key and click events in the same process, never real OS input; screenshots with Pillow (development only).
 

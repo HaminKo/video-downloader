@@ -7,6 +7,7 @@ download stands in for yt-dlp, so nothing touches the internet.
 """
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from drive import (
@@ -14,6 +15,7 @@ from drive import (
     PROGRESS,
     VIDEO_TITLE,
     FakeDownload,
+    FakeFiles,
     assert_inside_window,
     box,
     click,
@@ -38,9 +40,16 @@ def fake() -> Iterator[FakeDownload]:
     fake.finish()  # never leave the download's thread waiting
 
 
+@pytest.fixture
+def files() -> FakeFiles:
+    return FakeFiles()
+
+
 @pytest.fixture(params=list(SIZES.values()), ids=list(SIZES))
-def app(request: pytest.FixtureRequest, fake: FakeDownload) -> Iterator[App]:
-    app = open_window(fake, width=request.param)
+def app(
+    request: pytest.FixtureRequest, fake: FakeDownload, files: FakeFiles, tmp_path: Path
+) -> Iterator[App]:
+    app = open_window(fake, width=request.param, folder=tmp_path, files=files)
     try:
         yield app
     finally:
@@ -137,6 +146,7 @@ def test_failure_shows_a_plain_message_in_red(app: App, fake: FakeDownload) -> N
     assert app.status.get() == FFMPEG_MISSING
     assert str(app.status_label.cget("foreground")) == FAILED_COLOR
     assert_inside_window(app.status_label)
+    assert_inside_window(app.show_button)  # the window grew to fit the message
     assert app.progress_bar.cget("value") == 0
     assert not app.download_button.instate(["disabled"]), "can try again"
 
@@ -144,6 +154,26 @@ def test_failure_shows_a_plain_message_in_red(app: App, fake: FakeDownload) -> N
     wait_for_progress(app, "clicking Download again")
     assert str(app.status_label.cget("foreground")) == ""
     finish(app, fake)
+
+
+def test_play_and_show_in_folder(
+    app: App, fake: FakeDownload, files: FakeFiles
+) -> None:
+    assert app.play_button.instate(["disabled"]), "nothing to play yet"
+    click(app.play_button)
+    click(app.show_button)
+    assert files.calls == [("open_folder", app.folder)], "no download yet: the folder"
+
+    video = app.folder / f"{VIDEO_TITLE}.mp4"
+    video.write_bytes(b"")  # the fake download saves nothing
+    type_text(app.link_entry, LINK)
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "Enter in the link box")
+    assert app.show_button.instate(["disabled"]), "nothing opens during a download"
+    finish(app, fake)
+    click(app.play_button)
+    click(app.show_button)
+    assert files.calls[1:] == [("play", video), ("show", video)]
 
 
 def test_everything_fits_the_window(app: App) -> None:
@@ -156,6 +186,8 @@ def test_everything_fits_the_window(app: App) -> None:
         *app.quality_buttons,
         app.subtitles_box,
         app.progress_bar,
+        app.play_button,
+        app.show_button,
     ):
         assert_inside_window(widget)
     entry_left, _, entry_right, _ = box(app.link_entry)
@@ -179,3 +211,4 @@ def test_long_message_wraps_instead_of_widening(app: App) -> None:
     app.root.update()
     assert app.root.winfo_width() == width, "a long message widened the window"
     assert_inside_window(app.status_label)
+    assert_inside_window(app.show_button)

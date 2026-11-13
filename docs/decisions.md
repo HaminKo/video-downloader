@@ -2,6 +2,16 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-12: Play and Show in folder buttons under the status line; nothing opens by itself
+- **Reason:** after a download, one click plays the file or shows it in Explorer, instead of finding it in Downloads\Videos by hand. Play opens it in its default app (`os.startfile`; VLC also loads the `.en.srt` next to it). Show in folder runs `explorer /select,"PATH"` as one string with the path in quotes, because Explorer splits an unquoted path at its commas (measured; docs/research/opening-files.md). Play is greyed out until a download has finished, again after a failed one, and during a download. Show in folder is greyed out only during a download; with no finished file (none yet, a failure, or the file moved or deleted) it opens Downloads\Videos, making the folder if it isn't there. Play on a moved or deleted file says so in red. This replaces To do 3's "no Open folder button", which was left out then only to keep the first version small.
+- **Who decided:** the user, on Claude's suggestions (To do 12).
+- **Rejected:**
+  - opening the file by itself after each download: a player popping up unasked gets annoying, worse with playlists (To do 8)
+  - Play still playing the earlier file after a failed download: it would play something other than what the status line is about
+  - both buttons usable during a download: harmless, but Play would play the previous video while the status line shows the new one; greyed out like the other controls
+  - the Explorer command as a list for `subprocess`: Python quotes a part only when it holds a space, so `a,b.mp4` broke (measured)
+  - working around Explorer selecting nothing the first time it shows a folder: it happens once, when Downloads\Videos is new
+
 ## 2026-11-12: English subtitles as a separate `Title.en.srt` next to the MP4, from a checkbox
 - **Reason:** Windows' own playback API finds no subtitles inside an MP4 (`mov_text`), while it does find SRT inside an MKV (measured; docs/research/subtitles.md). A separate .srt works in nearly every player; in VLC, the user's player, `Title.en.srt` showed by itself (user's test), so it keeps yt-dlp's name. English only (`subtitleslangs: ["en"]`): real subtitles when the video has them, otherwise automatic ones (on YouTube, possibly its automatic translation). Measured: each of 9 YouTube videos got exactly one English track. YouTube's own srt (`subtitlesformat: "srt/best"`), because its automatic captions as vtt show every line twice; other sites' vtt is converted to srt by ffmpeg. A video without English subtitles still downloads, and the window says "No English subtitles found."
 - **Who decided:** the user, on Claude's suggestions (To do 7).
@@ -74,7 +84,7 @@ Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who d
   - a playlist or channel link downloads one video and says playlists aren't supported yet (without a setting, yt-dlp downloads all of it)
   - one download at a time, no Cancel button; closing the window stops it
   - the window opens 600 px wide at normal size, scaled with the display's DPI; that is also its smallest size
-  - download folder fixed to Downloads\Videos; no "Open folder" button
+  - download folder fixed to Downloads\Videos; no "Open folder" button (replaced 2026-11-12: To do 12 added Play and Show in folder)
 
 ## 2026-11-11: GUI test with Tk's own key and click events in the same process; Pillow for screenshots
 - **Reason:** Tk's events run the same bindings as real key presses and clicks, need no extra package and leave the user's mouse and other windows alone. The whole test takes about 3 s. Pillow's `ImageGrab` is the standard way to take a screenshot (one line), and it is only a development package. Details and measurements: docs/research/gui-testing.md.
