@@ -25,7 +25,7 @@ from drive import (
     wait_until,
 )
 
-from video_downloader.app import FAILED_COLOR, TITLE, App
+from video_downloader.app import CANCELLED, FAILED_COLOR, TITLE, App
 from video_downloader.downloader import FFMPEG_MISSING, Failed, Kind
 
 # The window's sizes, in screen pixels: None is the size it opens with, which
@@ -176,10 +176,33 @@ def test_play_and_show_in_folder(
     assert files.calls[1:] == [("play", video), ("show", video)]
 
 
+def test_cancel_stops_the_download(app: App, fake: FakeDownload) -> None:
+    assert app.cancel_button.instate(["disabled"]), "nothing to cancel yet"
+    click(app.mp3_button)
+    type_text(app.link_entry, LINK)
+    click(app.download_button)
+    wait_for_progress(app, "clicking Download")
+    assert not app.cancel_button.instate(["disabled"])
+    click(app.cancel_button)
+    wait_until(app, lambda: not app.busy, "the download to stop")
+    assert app.status.get() == CANCELLED
+    assert str(app.status_label.cget("foreground")) == "", "not a failure"
+    assert app.progress_bar.cget("value") == 0
+    assert app.cancel_button.instate(["disabled"])
+    assert app.play_button.instate(["disabled"]), "nothing to play"
+    assert (app.link.get(), app.kind.get()) == (LINK, Kind.MP3), "choices kept"
+
+    click(app.download_button)  # the next download works
+    wait_for_progress(app, "clicking Download after Cancel")
+    finish(app, fake)
+    assert app.status.get().startswith(f"Done: {VIDEO_TITLE}.mp3"), app.status.get()
+
+
 def test_everything_fits_the_window(app: App) -> None:
     for widget in (
         app.link_entry,
         app.download_button,
+        app.cancel_button,
         app.mp4_button,
         app.mp3_button,
         app.quality_label,

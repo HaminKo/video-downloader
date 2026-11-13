@@ -2,6 +2,21 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-12: A Cancel button next to Download; a cancelled download deletes only the new files named after its video
+- **Reason:** a download started with the wrong choice (Best instead of 720p) could only be stopped by closing the window, which also lost the choices. yt-dlp has no stop call; its own way is raising `DownloadCancelled` from a hook, so both hooks (progress, and the steps after the download) raise it once the window's flag (a `threading.Event`) is set: within a second while downloading. An ffmpeg step (joining, converting to MP3) can't be stopped in the middle, so Cancel takes effect when it ends. Clean-up deletes a file only when both are true: it wasn't in the folder when the download started, and its name starts with the video's file name and a dot (`Title.`), which every file of a download does (`.part`, `-Frag`, `.ytdl`, `Title.f137.mp4`, `Title.en.srt`). Each condition alone is unsafe: "new" alone would delete a file that lands in the folder meanwhile; "named like it" alone would delete an earlier copy. yt-dlp leaves an HLS `.part` open after the error, so the clean-up runs `gc.collect()` first (measured; docs/research/yt-dlp-library.md "Cancelling"). The window says "Cancelling..." at once, then "Cancelled." in the normal color; choices stay, Play is greyed out as after a failure. This replaces To do 3's "no Cancel button", which was left out then only to keep the first version small.
+- **Who decided:** the user, on Claude's suggestions (To do 13).
+- **Rejected:**
+  - Download turning into Cancel during a download: saves space, but a double-click would cancel right away
+  - Escape cancelling too: a key that cancels by accident is worse than a click
+  - keeping the half-downloaded files, as closing the window does: Cancel means "I don't want this", and they would pile up unseen
+  - deleting every new file in the folder: would also delete a file saved there by something else meanwhile
+  - stopping ffmpeg in the middle of a step: yt-dlp waits for it without a way in; it would need finding and killing the child process (Windows process tools or a new dependency). A Someday to-do if the wait bugs the user
+  - running yt-dlp in a separate process that Cancel kills: stops at once in every phase, but a much bigger change (events between processes, killing ffmpeg too)
+  - a temp folder per download (yt-dlp's `paths: {"temp": ...}`), so Cancel deletes that folder instead of matching names (suggested by the code review): safer by construction, but it changes where every download writes, needs a clean-up of folders orphaned by closing the window (more deleting code), loses resuming after a close, and may copy big files across drives. Worth another look in To do 8, which has to change the clean-up anyway
+  - a Done that arrives after Cancel was clicked turned into Cancelled: the download had already finished, and the file is there; the window shows Done
+  - closing the window cleaning up too: it would have to wait for the download thread before closing; the leftover `.part` lets yt-dlp continue the same video later
+- **For playlists (To do 8):** Cancel stops the rest and keeps the videos already finished.
+
 ## 2026-11-12: Play and Show in folder buttons under the status line; nothing opens by itself
 - **Reason:** after a download, one click plays the file or shows it in Explorer, instead of finding it in Downloads\Videos by hand. Play opens it in its default app (`os.startfile`; VLC also loads the `.en.srt` next to it). Show in folder runs `explorer /select,"PATH"` as one string with the path in quotes, because Explorer splits an unquoted path at its commas (measured; docs/research/opening-files.md). Play is greyed out until a download has finished, again after a failed one, and during a download. Show in folder is greyed out only during a download; with no finished file (none yet, a failure, or the file moved or deleted) it opens Downloads\Videos, making the folder if it isn't there. Play on a moved or deleted file says so in red. This replaces To do 3's "no Open folder button", which was left out then only to keep the first version small.
 - **Who decided:** the user, on Claude's suggestions (To do 12).
@@ -82,7 +97,7 @@ Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who d
   - file name: the video's title, cut to 150 bytes. Rejected: yt-dlp's default `Title [id]`, which never clashes but looks cluttered; the cost is that two videos with the same title share a name, so the second counts as "already there"
   - a file already there is skipped, with a message
   - a playlist or channel link downloads one video and says playlists aren't supported yet (without a setting, yt-dlp downloads all of it)
-  - one download at a time, no Cancel button; closing the window stops it
+  - one download at a time, no Cancel button; closing the window stops it (Cancel button added 2026-11-12: To do 13)
   - the window opens 600 px wide at normal size, scaled with the display's DPI; that is also its smallest size
   - download folder fixed to Downloads\Videos; no "Open folder" button (replaced 2026-11-12: To do 12 added Play and Show in folder)
 

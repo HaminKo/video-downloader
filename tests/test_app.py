@@ -1,5 +1,6 @@
 import os
 import subprocess
+import threading
 import time
 import tkinter as tk
 from collections.abc import Iterator
@@ -8,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from video_downloader.app import (
+    CANCELLED,
+    CANCELLING,
     FAILED_COLOR,
     GONE,
     LOOKING_UP,
@@ -24,13 +27,22 @@ from video_downloader.app import (
     shown_folder,
     window_width,
 )
-from video_downloader.downloader import Done, Event, Failed, Kind, Progress, Report
+from video_downloader.downloader import (
+    Cancelled,
+    Done,
+    Event,
+    Failed,
+    Kind,
+    Progress,
+    Report,
+)
 
 LINK = "https://example.com/video"
 
 
 class FakeDownload:
-    """Stands in for yt-dlp: reports `events` at once and remembers the calls."""
+    """Stands in for yt-dlp: reports `events` at once and remembers the calls.
+    With `until_cancelled`, it then waits for Cancel and reports Cancelled."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Kind, Path, int | None, bool]] = []
@@ -38,6 +50,7 @@ class FakeDownload:
             Progress("Downloading video: 40% of 12 MB", 40.0),
             Done(Path("Test video.mp4"), already_there=False),
         ]
+        self.until_cancelled = False
 
     def __call__(
         self,
@@ -47,10 +60,13 @@ class FakeDownload:
         report: Report,
         height: int | None,
         subtitles: bool,
+        cancel: threading.Event,
     ) -> None:
         self.calls.append((link, kind, folder, height, subtitles))
         for event in self.events:
             report(event)
+        if self.until_cancelled and cancel.wait(timeout=5):
+            report(Cancelled())
 
 
 class FakeFiles(Files):
@@ -102,6 +118,8 @@ def wait_until_done(app: App) -> None:
 def test_window_has_its_parts(app: App) -> None:
     assert app.root.title() == TITLE
     assert app.download_button.cget("text") == "Download"
+    assert app.cancel_button.cget("text") == "Cancel"
+    assert app.cancel_button.instate(["disabled"]), "nothing to cancel yet"
     assert app.kind.get() == Kind.MP4
     assert app.status.get() == ""
     assert app.root.minsize()[0] == window_width(app.root)
@@ -214,6 +232,33 @@ def test_failure_shows_the_message(app: App, fake: FakeDownload) -> None:
     assert app.status.get() == LOOKING_UP
     assert str(app.status_label.cget("foreground")) == ""
     wait_until_done(app)
+
+
+def test_cancel_stops_the_download(app: App, fake: FakeDownload) -> None:
+    fake.events = [Progress("Downloading video: 40% of 12 MB", 40.0)]
+    fake.until_cancelled = True
+    app.mp3_button.invoke()
+    app.link.set(LINK)
+    app.download_button.invoke()
+    assert not app.cancel_button.instate(["disabled"])
+    # Progress reported before Cancel is still waiting to be shown: it must
+    # not replace "Cancelling...".
+    deadline = time.monotonic() + 5
+    while app.events.empty():
+        assert time.monotonic() < deadline, "the fake never reported progress"
+        time.sleep(0.01)
+    app.cancel_button.invoke()
+    assert app.status.get() == CANCELLING
+    assert app.cancel_button.instate(["disabled"]), "once is enough"
+    assert app.download_button.instate(["disabled"]), "until it has stopped"
+    wait_until_done(app)
+    assert app.status.get() == CANCELLED
+    assert str(app.status_label.cget("foreground")) == "", "not a failure"
+    assert app.progress_bar.cget("value") == 0
+    assert not app.download_button.instate(["disabled"])
+    assert app.cancel_button.instate(["disabled"])
+    assert app.play_button.instate(["disabled"]), "nothing to play"
+    assert (app.link.get(), app.kind.get()) == (LINK, Kind.MP3), "choices kept"
 
 
 def test_play_and_show_in_folder_open_the_last_download(

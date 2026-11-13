@@ -1,17 +1,17 @@
 # To do
 
 ## Where we are
-- Now: To do 13 (Cancel a running download)
+- Now: To do 14 (An MP3 download must not delete the MP4 already there)
 - Next: To do 8, 9, 10
 - Updated: 2026-11-12
 
 ## To do
-Next number: 14. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
+Next number: 15. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
 
 ### Now
 The one to-do being built.
 
-- To do 13: Cancel a running download (medium; user 2026-11-12): docs/todo/13-cancel.md
+- To do 14: An MP3 download must not delete the MP4 already there (small; user 2026-11-12): docs/todo/14-mp3-keeps-mp4.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.

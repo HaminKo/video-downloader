@@ -1,16 +1,19 @@
 """Download one video with yt-dlp, as MP4 (in a chosen quality, optionally
-with English subtitles) or MP3.
+with English subtitles) or MP3; a download can be cancelled.
 
 The window runs download() in a background thread. It hears what happens
-only through `report`: Progress events while it runs, then exactly one Done
-or Failed.
+only through `report`: Progress events while it runs, then exactly one Done,
+Failed or Cancelled.
 """
 
 import copy
+import gc
 import io
 import os
 import re
 import shutil
+import sys
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -18,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yt_dlp
-from yt_dlp.utils import DownloadError, UnavailableVideoError
+from yt_dlp.utils import DownloadCancelled, DownloadError, UnavailableVideoError
 
 if TYPE_CHECKING:
     # yt-dlp's settings as pyright knows them (its bundled yt-dlp stubs).
@@ -186,7 +189,12 @@ class Failed:
     message: str
 
 
-type Event = Progress | Done | Failed
+@dataclass(frozen=True)
+class Cancelled:
+    """Stopped on request; what the download had saved is deleted."""
+
+
+type Event = Progress | Done | Failed | Cancelled
 type Report = Callable[[Event], None]
 
 
@@ -265,12 +273,29 @@ def download(
     report: Report,
     height: int | None = None,
     subtitles: bool = False,
+    cancel: threading.Event | None = None,
 ) -> None:
     """Download the video at `link` into `folder` (made if missing); `height`
-    and `subtitles` as in options()."""
+    and `subtitles` as in options(). Setting `cancel` stops the download at
+    yt-dlp's next report: within a second while downloading, after the step
+    while ffmpeg joins or converts."""
     saved: list[Path] = []
+    # The names of the files this download saves start with these
+    # (note_names()); a cancelled download deletes them.
+    prefixes: set[str] = set()
+    # The folder's file names before the download. Taken before yt-dlp
+    # starts, so before any hook can add a prefix.
+    there_before: set[str] = set()
+
+    def stop_if_cancelled(status: Mapping[str, Any]) -> None:
+        # yt-dlp has no stop call: this error from a hook is its own way
+        # (docs/research/yt-dlp-library.md "Cancelling").
+        note_names(status, prefixes)
+        if cancel is not None and cancel.is_set():
+            raise DownloadCancelled
 
     def on_progress(status: Mapping[str, Any]) -> None:
+        stop_if_cancelled(status)
         # Not the subtitles' own download, a few KB before the video's: the
         # bar would fill and start again. yt-dlp gives every video and audio
         # format a format_id, subtitles none (docs/research/subtitles.md).
@@ -279,6 +304,7 @@ def download(
             report(progress(status))
 
     def on_step(status: Mapping[str, Any]) -> None:
+        stop_if_cancelled(status)  # at "started", before ffmpeg runs, too
         text = STEP_TEXTS.get(status["postprocessor"])
         if status["status"] == "started" and text:
             report(Progress(text, None))
@@ -289,6 +315,7 @@ def download(
         report(Failed(FFMPEG_MISSING))
         return
     signed_in = False
+    cancelled = False
     try:
         settings = options(kind, folder, height, subtitles)  # reads the sign-in file
         signed_in = "cookiefile" in settings
@@ -305,6 +332,10 @@ def download(
             # It did turn UnavailableVideoError (an OSError while saving, such
             # as a full disk) into a DownloadError; the next line does that now.
             info = ydl.extract_info(link)
+    except DownloadCancelled:
+        # Cleaned up below: until this block has ended, the error holds on to
+        # files yt-dlp still has open.
+        cancelled = True
     except (DownloadError, UnavailableVideoError) as error:
         report(Failed(plain_message(str(error), signed_in)))
     except Exception as error:  # the window must always hear that it ended
@@ -327,6 +358,45 @@ def download(
             )
         else:
             report(Failed("Nothing was downloaded from this link."))
+    if cancelled:
+        try:
+            remove_unfinished(folder, prefixes, there_before)
+        finally:  # the window must always hear that it ended
+            report(Cancelled())
+
+
+def note_names(status: Mapping[str, Any], prefixes: set[str]) -> None:
+    """Add to `prefixes` how the names of the files a hook's `status` is
+    about start. Every file of a video starts with its file name without the
+    extension, then a dot: Title.f137.mp4.part, Title.temp.mp4, Title.en.srt.
+    A subtitle download's status doesn't have that name, but its own:
+    Title.en.vtt (docs/research/yt-dlp-library.md "Cancelling")."""
+    info = status.get("info_dict") or {}
+    if name := info.get("_filename"):
+        prefixes.add(f"{Path(name).stem}.")
+    for key in ("filename", "tmpfilename"):
+        if name := status.get(key):
+            prefixes.add(Path(name).name)
+
+
+def remove_unfinished(folder: Path, prefixes: set[str], there_before: set[str]) -> None:
+    """Delete the files a cancelled download left in `folder`: those whose
+    names start with one of `prefixes`, unless they were there before it
+    started (a .part left by closing the window, too). A file that lands in
+    the folder meanwhile stays, unless its name starts the same way."""
+    # yt-dlp's HLS downloader leaves its .part file open after the error, and
+    # Windows can't delete an open file. A reference cycle holds it; this
+    # closes it (measured, docs/research/yt-dlp-library.md "Cancelling").
+    gc.collect()
+    starts = tuple(prefixes)
+    for path in folder.iterdir():
+        if path.name in there_before or not path.name.startswith(starts):
+            continue
+        if path.is_file():
+            try:
+                path.unlink()
+            except OSError as error:  # the window still says Cancelled
+                print(f"Couldn't delete {path}: {error}", file=sys.stderr)
 
 
 def plain_message(error: str, signed_in: bool = False) -> str:

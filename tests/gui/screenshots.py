@@ -53,11 +53,19 @@ def failed(app: App, fake: FakeDownload) -> None:
     wait_until(app, lambda: not app.busy, "the download to end")
 
 
+def cancelled(app: App, fake: FakeDownload) -> None:
+    """Cancel clicked during a download: "Cancelled." in the normal color."""
+    downloading(app, fake)
+    click(app.cancel_button)
+    wait_until(app, lambda: not app.busy, "the download to stop")
+
+
 SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "start": opened,
     "progress": downloading,
     "done": done,
     "error": failed,
+    "cancelled": cancelled,
 }
 
 

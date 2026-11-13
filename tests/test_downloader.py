@@ -1,7 +1,7 @@
 import shutil
 import subprocess
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,6 +27,7 @@ from video_downloader.downloader import (
     REDDIT_REFUSED,
     SIGN_IN,
     SUBTITLES_FAILED,
+    Cancelled,
     Done,
     Event,
     Failed,
@@ -36,6 +37,7 @@ from video_downloader.downloader import (
     options,
     plain_message,
     progress,
+    remove_unfinished,
     size_text,
 )
 
@@ -388,6 +390,12 @@ def clip_link(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         check=True,
     )  # fmt: skip
     shutil.copy(site / "clip.mp4", site / "clip2.mp4")
+    # The clip as HLS, which yt-dlp downloads in pieces (stream.m3u8, stream0.ts).
+    subprocess.run(
+        ["ffmpeg", "-loglevel", "error", "-i", str(site / "clip.mp4"), "-c",
+         "copy", "-f", "hls", "-hls_list_size", "0", str(site / "stream.m3u8")],
+        check=True,
+    )  # fmt: skip
     # Pages with the clip and its subtitles (a <track>, which yt-dlp reads):
     # in English, and in German only.
     (site / "clip.vtt").write_text("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n")
@@ -552,6 +560,115 @@ def test_playlist_downloads_its_first_video_and_says_so(
     assert isinstance(events[-1], Done)
     assert events[-1].playlist
     assert [path.name for path in tmp_path.iterdir()] == [events[-1].path.name]
+
+
+def cancel_at(
+    text: str | None,
+    link: str,
+    kind: Kind,
+    folder: Path,
+    subtitles: bool = False,
+    meanwhile: Callable[[], object] = lambda: None,
+) -> list[Event]:
+    """Download, and click Cancel when the first progress text starting with
+    `text` is reported (None: before the download starts). `meanwhile` runs
+    at that moment too."""
+    events: list[Event] = []
+    cancel = threading.Event()
+    if text is None:
+        cancel.set()
+
+    def report(event: Event) -> None:
+        events.append(event)
+        if isinstance(event, Progress) and text and event.text.startswith(text):
+            if not cancel.is_set():
+                meanwhile()
+            cancel.set()
+
+    download(link, kind, folder, report, subtitles=subtitles, cancel=cancel)
+    return events
+
+
+@pytest.mark.parametrize(
+    ("page", "kind", "subtitles", "text"),
+    [
+        ("clip.mp4", Kind.MP4, False, "Downloading"),
+        ("clip.mp4", Kind.MP4, False, None),
+        ("clip.mp4", Kind.MP3, False, "Downloading"),
+        ("clip.mp4", Kind.MP3, False, "Converting to MP3"),
+        # The subtitles, finished before the video starts, go too.
+        ("subtitled.html", Kind.MP4, True, "Downloading"),
+        # yt-dlp leaves a .part (still open), -Frag and .ytdl files.
+        ("stream.m3u8", Kind.MP4, False, "Downloading"),
+    ],
+    ids=[
+        "while downloading",
+        "while looking up",
+        "MP3 while downloading",
+        "while converting to MP3",
+        "with subtitles",
+        "HLS",
+    ],
+)
+def test_cancel_deletes_what_the_download_saved(
+    clip_link: str,
+    page: str,
+    kind: Kind,
+    subtitles: bool,
+    text: str | None,
+    tmp_path: Path,
+) -> None:
+    link = clip_link.replace("clip.mp4", page)
+    events = cancel_at(text, link, kind, tmp_path, subtitles)
+    assert events[-1] == Cancelled()
+    assert not any(isinstance(event, Done | Failed) for event in events)
+    assert [path.name for path in tmp_path.iterdir()] == []
+    if text is None:
+        assert events == [Cancelled()], "no progress after Cancel"
+
+
+def test_cancel_leaves_every_other_file_alone(clip_link: str, tmp_path: Path) -> None:
+    # Named like the video, but there before: an MP3 of it and the user's
+    # own subtitles. And one that lands in the folder during the download.
+    before = {"clip.mp3": b"an earlier MP3", "clip.en.srt": b"own subtitles"}
+    for name, data in before.items():
+        (tmp_path / name).write_bytes(data)
+    meanwhile = tmp_path / "another video.mp4"
+    events = cancel_at(
+        "Downloading",
+        clip_link,
+        Kind.MP4,
+        tmp_path,
+        meanwhile=lambda: meanwhile.write_bytes(b"saved meanwhile"),
+    )
+    assert events[-1] == Cancelled()
+    left = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
+    assert left == {**before, meanwhile.name: b"saved meanwhile"}
+
+
+def test_remove_unfinished_deletes_only_new_files_named_like_the_video(
+    tmp_path: Path,
+) -> None:
+    names = [
+        "Title.mp4.part",
+        "Title.f137.mp4.part-Frag3.part",
+        "Title.en.srt",
+        "Title.mp3",  # there before
+        "Title (720p).mp4",  # another quality: another name
+        "Titles.mp4",
+        "Other.mp4",
+    ]
+    for name in names:
+        (tmp_path / name).write_bytes(b"")
+    (tmp_path / "Title.folder").mkdir()  # only files are deleted
+    remove_unfinished(tmp_path, {"Title."}, there_before={"Title.mp3"})
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "Other.mp4",
+        "Title (720p).mp4",
+        "Title.folder",
+        "Title.mp3",
+        "Titles.mp4",
+    ]
 
 
 def test_missing_ffmpeg_fails_before_downloading(

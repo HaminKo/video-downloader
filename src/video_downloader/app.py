@@ -1,6 +1,6 @@
-"""The main window: a link box, MP4 or MP3, the video quality, English
-subtitles, a Download button, progress, a status line, and Play and Show in
-folder buttons."""
+"""The main window: a link box, Download and Cancel buttons, MP4 or MP3, the
+video quality, English subtitles, progress, a status line, and Play and Show
+in folder buttons."""
 
 import os
 import queue
@@ -13,11 +13,21 @@ from pathlib import Path
 from tkinter import ttk
 
 from video_downloader import downloader
-from video_downloader.downloader import Done, Event, Failed, Kind, Progress, Report
+from video_downloader.downloader import (
+    Cancelled,
+    Done,
+    Event,
+    Failed,
+    Kind,
+    Progress,
+    Report,
+)
 
 TITLE = "Video Downloader"
 PASTE_A_LINK = "Paste a link to a video first."
 LOOKING_UP = "Looking up the video..."
+CANCELLING = "Cancelling..."
+CANCELLED = "Cancelled."
 PLAYLIST_NOTE = (
     "The link is a playlist: the app only takes its first video "
     "(playlists aren't supported yet)."
@@ -42,8 +52,10 @@ WIDTH = 600
 CHECK_EVERY = 100
 
 # link, MP4 or MP3, folder, report, the quality limit (None: the best),
-# English subtitles
-type Download = Callable[[str, Kind, Path, Report, int | None, bool], None]
+# English subtitles, cancel (set: stop and report Cancelled)
+type Download = Callable[
+    [str, Kind, Path, Report, int | None, bool, threading.Event], None
+]
 
 
 class Files:
@@ -98,6 +110,7 @@ class App:
         self.files = files or Files()
         self.last_file: Path | None = None  # the last finished download
         self.busy = False
+        self.cancel = threading.Event()  # set by Cancel; a new one per download
         self.events: queue.Queue[Event] = queue.Queue()
         self.next_check = ""  # the scheduled check_events(), while busy
         self.next_fit = ""  # the scheduled fit_height()
@@ -116,10 +129,17 @@ class App:
         self.link = tk.StringVar()
         self.link_entry = ttk.Entry(frame, textvariable=self.link)
         self.link_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8))
+        # Cancel is greyed out unless a download is running.
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=1, column=1)
         self.download_button = ttk.Button(
-            frame, text="Download", command=self.start_download
+            buttons, text="Download", command=self.start_download
         )
-        self.download_button.grid(row=1, column=1)
+        self.download_button.grid(row=0, column=0, padx=(0, 8))
+        self.cancel_button = ttk.Button(
+            buttons, text="Cancel", command=self.cancel_download
+        )
+        self.cancel_button.grid(row=0, column=1)
 
         self.kind = tk.StringVar(value=Kind.MP4)
         kinds = ttk.Frame(frame)
@@ -195,6 +215,7 @@ class App:
         if not link:
             self.show_status(PASTE_A_LINK)
             return
+        self.cancel = threading.Event()
         self.set_busy(True)
         self.show_progress(None)
         self.show_status(LOOKING_UP)
@@ -208,17 +229,32 @@ class App:
                 # The downloader ignores these two for MP3.
                 QUALITIES[self.quality.get()],
                 self.subtitles.get(),
+                self.cancel,
             ),
             daemon=True,  # closing the window stops the download
         ).start()
         self.next_check = self.root.after(CHECK_EVERY, self.check_events)
+
+    def cancel_download(self) -> None:
+        """Ask the running download to stop. It reports Cancelled once it has
+        stopped and deleted what it had saved: at once while downloading,
+        after the step while ffmpeg joins or converts. One that finishes
+        before it notices reports Done as usual: the file is there."""
+        if not self.busy or self.cancel.is_set():
+            return
+        self.cancel.set()
+        self.show_status(CANCELLING)
+        self.show_progress(None)
+        self.update_states()
 
     def check_events(self) -> None:
         """Show what the download reported since the last check."""
         self.next_check = ""
         while not self.events.empty():
             match self.events.get():
-                case Progress(text, percent):
+                # After Cancel, progress reported before it stopped would
+                # replace "Cancelling...".
+                case Progress(text, percent) if not self.cancel.is_set():
                     self.show_status(text)
                     self.show_progress(percent)
                 case Done() as done:
@@ -229,6 +265,11 @@ class App:
                 case Failed(message):
                     self.last_file = None
                     self.show_status(message, failed=True)
+                    self.show_progress(0)
+                    self.set_busy(False)
+                case Cancelled():
+                    self.last_file = None
+                    self.show_status(CANCELLED)
                     self.show_progress(0)
                     self.set_busy(False)
         if self.busy:
@@ -295,9 +336,12 @@ class App:
 
     def update_states(self) -> None:
         """Grey out what can't be used now: every choice and button during a
-        download, the video quality and subtitles while MP3 is chosen, and
-        Play until a download has finished."""
+        download but Cancel, which only works then (once), the video quality
+        and subtitles while MP3 is chosen, and Play until a download has
+        finished."""
         idle = not self.busy
+        cancellable = self.busy and not self.cancel.is_set()
+        self.cancel_button.state(["!disabled"] if cancellable else ["disabled"])
         video = idle and self.kind.get() == Kind.MP4
         playable = idle and self.last_file is not None
         idle_widgets = (

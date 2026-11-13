@@ -19,7 +19,7 @@ from pathlib import Path
 from PIL import ImageGrab
 
 from video_downloader.app import App, Files, start
-from video_downloader.downloader import Done, Failed, Kind, Progress, Report
+from video_downloader.downloader import Cancelled, Done, Failed, Kind, Progress, Report
 
 SCREENSHOT_DIR = Path(tempfile.gettempdir()) / "video-downloader-screenshots"
 
@@ -90,7 +90,7 @@ def sending() -> Iterator[None]:
 class FakeDownload:
     """Stands in for yt-dlp, so nothing touches the internet: reports PROGRESS,
     then waits for finish() before reporting Done, or the failure given to
-    finish()."""
+    finish(); or for Cancel, then reports Cancelled."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Kind, Path, int | None, bool]] = []
@@ -105,12 +105,20 @@ class FakeDownload:
         report: Report,
         height: int | None,
         subtitles: bool,
+        cancel: threading.Event,
     ) -> None:
         self.calls.append((link, kind, folder, height, subtitles))
         report(Progress(PROGRESS, 40.0))
-        self.finished.wait(timeout=10)
+        deadline = time.monotonic() + 10
+        while not (self.finished.is_set() or cancel.is_set()):
+            if time.monotonic() > deadline:
+                break
+            time.sleep(0.01)
         self.finished.clear()  # the next download waits for its own finish()
-        report(self.failure or Done(folder / f"{VIDEO_TITLE}.{kind}", False))
+        if cancel.is_set():
+            report(Cancelled())
+        else:
+            report(self.failure or Done(folder / f"{VIDEO_TITLE}.{kind}", False))
 
     def finish(self, failure: Failed | None = None) -> None:
         self.failure = failure
