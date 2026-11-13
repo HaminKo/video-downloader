@@ -241,6 +241,17 @@ def options(
             {"key": "FFmpegSubtitlesConvertor", "format": "srt", "when": "before_dl"},
             *(settings.get("postprocessors") or []),
         ]
+    if kind == Kind.MP3:
+        # yt-dlp deletes the file it converted to MP3, also an MP4 of the
+        # same video that was already in the folder: on a site with no
+        # separate audio it takes that MP4 as the download. With this it
+        # deletes nothing; download() deletes the source only when it is new
+        # (docs/research/yt-dlp-library.md "Files yt-dlp deletes"). That
+        # replaces yt-dlp's deleting for ExtractAudio only, the one step of
+        # the MP3 preset that deletes: recheck if the preset gets another.
+        # A bool in yt-dlp (its --keep-video is a switch); the type stub
+        # says str.
+        settings["keepvideo"] = True  # pyright: ignore[reportGeneralTypeIssues]
     settings.update(
         {
             "paths": {"home": str(folder)},
@@ -286,6 +297,8 @@ def download(
     # The folder's file names before the download. Taken before yt-dlp
     # starts, so before any hook can add a prefix.
     there_before: set[str] = set()
+    # The files an MP3 was converted from (remove_mp3_sources()).
+    mp3_sources: set[Path] = set()
 
     def stop_if_cancelled(status: Mapping[str, Any]) -> None:
         # yt-dlp has no stop call: this error from a hook is its own way
@@ -305,6 +318,10 @@ def download(
 
     def on_step(status: Mapping[str, Any]) -> None:
         stop_if_cancelled(status)  # at "started", before ffmpeg runs, too
+        if status["postprocessor"] == "ExtractAudio" and status["status"] == "started":
+            # The file it converts from; the MP3 itself when that was already
+            # there (docs/research/yt-dlp-library.md "Files yt-dlp deletes").
+            mp3_sources.add(Path(status["info_dict"]["filepath"]))
         text = STEP_TEXTS.get(status["postprocessor"])
         if status["status"] == "started" and text:
             report(Progress(text, None))
@@ -343,6 +360,7 @@ def download(
     else:
         if saved:
             video = saved[-1]
+            remove_mp3_sources(mp3_sources, video, there_before)
             report(
                 Done(
                     video,
@@ -393,10 +411,25 @@ def remove_unfinished(folder: Path, prefixes: set[str], there_before: set[str]) 
         if path.name in there_before or not path.name.startswith(starts):
             continue
         if path.is_file():
-            try:
-                path.unlink()
-            except OSError as error:  # the window still says Cancelled
-                print(f"Couldn't delete {path}: {error}", file=sys.stderr)
+            delete(path)
+
+
+def remove_mp3_sources(sources: set[Path], mp3: Path, there_before: set[str]) -> None:
+    """Delete the files the finished `mp3` was converted from, as yt-dlp would
+    have (`keepvideo` in options()), but only those new since the download
+    started: an MP4 of the same video that was there before stays."""
+    for path in sources:
+        if path.name != mp3.name and path.name not in there_before:
+            delete(path)
+
+
+def delete(path: Path) -> None:
+    """Delete a file this download saved. If that fails, the download still
+    counts as done or cancelled; the reason goes to the terminal."""
+    try:
+        path.unlink()
+    except OSError as error:
+        print(f"Couldn't delete {path}: {error}", file=sys.stderr)
 
 
 def plain_message(error: str, signed_in: bool = False) -> str:

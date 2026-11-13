@@ -43,6 +43,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - Subtitles: a checkbox (MP4 only), English only, saved as a separate `Title.en.srt` next to the video, never inside the MP4 (Windows can't read them there).
 - Play (default app, `os.startfile`) and Show in folder (`explorer /select,"PATH"`, one string, path quoted) buttons under the status line; nothing opens by itself after a download.
 - Cancel button next to Download: raises yt-dlp's `DownloadCancelled` from the hooks, then deletes only files that are new since the start and named `Title.` + anything (never one that was there before); an ffmpeg step finishes first.
+- MP3 sets `keepvideo`; the app deletes the file converted from only when it wasn't in the folder before (an MP4 already there stays).
 - Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.
 - The GUI test drives the window with Tk's own key and click events in the same process, never real OS input; screenshots with Pillow (development only).
 

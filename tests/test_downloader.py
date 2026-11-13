@@ -37,6 +37,7 @@ from video_downloader.downloader import (
     options,
     plain_message,
     progress,
+    remove_mp3_sources,
     remove_unfinished,
     size_text,
 )
@@ -455,6 +456,17 @@ def test_download_then_already_there(
     assert again[-1] == Done(folder / f"clip.{kind}", already_there=True)
 
 
+def test_mp3_keeps_the_mp4_already_there(clip_link: str, tmp_path: Path) -> None:
+    # The test site has no separate audio, so yt-dlp makes the MP3 from the
+    # MP4 already there, and without `keepvideo` deleted it afterwards.
+    run(clip_link, Kind.MP4, tmp_path)
+    mp4 = (tmp_path / "clip.mp4").read_bytes()
+    events = run(clip_link, Kind.MP3, tmp_path)
+    assert events[-1] == Done(tmp_path / "clip.mp3", already_there=False)
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["clip.mp3", "clip.mp4"]
+    assert (tmp_path / "clip.mp4").read_bytes() == mp4
+
+
 def test_another_quality_is_a_file_of_its_own(clip_link: str, tmp_path: Path) -> None:
     # Best, then 720p of the same video to save space: the 720p one isn't
     # "already there".
@@ -646,6 +658,18 @@ def test_cancel_leaves_every_other_file_alone(clip_link: str, tmp_path: Path) ->
     assert left == {**before, meanwhile.name: b"saved meanwhile"}
 
 
+def test_cancel_while_converting_keeps_the_mp4_already_there(
+    clip_link: str, tmp_path: Path
+) -> None:
+    # The MP3 is made from that MP4 (test_mp3_keeps_the_mp4_already_there).
+    run(clip_link, Kind.MP4, tmp_path)
+    mp4 = (tmp_path / "clip.mp4").read_bytes()
+    events = cancel_at("Converting to MP3", clip_link, Kind.MP3, tmp_path)
+    assert events[-1] == Cancelled()
+    assert [path.name for path in tmp_path.iterdir()] == ["clip.mp4"]
+    assert (tmp_path / "clip.mp4").read_bytes() == mp4
+
+
 def test_remove_unfinished_deletes_only_new_files_named_like_the_video(
     tmp_path: Path,
 ) -> None:
@@ -669,6 +693,18 @@ def test_remove_unfinished_deletes_only_new_files_named_like_the_video(
         "Title.mp3",
         "Titles.mp4",
     ]
+
+
+def test_remove_mp3_sources_deletes_only_new_sources(tmp_path: Path) -> None:
+    for name in ("new.webm", "earlier.mp4", "fetched.mp3"):
+        (tmp_path / name).write_bytes(b"")
+    # A site with MP3 audio: the download is the MP3 itself, new but kept.
+    for source, mp3 in (("new.webm", "new.mp3"), ("fetched.mp3", "fetched.mp3")):
+        remove_mp3_sources({tmp_path / source}, tmp_path / mp3, set())
+    remove_mp3_sources(
+        {tmp_path / "earlier.mp4"}, tmp_path / "earlier.mp3", {"earlier.mp4"}
+    )
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["earlier.mp4", "fetched.mp3"]
 
 
 def test_missing_ffmpeg_fails_before_downloading(
