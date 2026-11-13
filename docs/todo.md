@@ -1,9 +1,9 @@
 # To do
 
 ## Where we are
-- Now: To do 8 (Playlists and whole channels)
-- Next: To do 9, 10
-- Updated: 2026-11-12
+- Now: To do 9 (Queue and history)
+- Next: To do 10
+- Updated: 2026-11-13
 
 ## To do
 Next number: 15. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
@@ -11,17 +11,17 @@ Next number: 15. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- To do 8: Playlists and whole channels (medium; user 2026-11-11): docs/todo/08-playlists.md
+- To do 9: Queue and history (medium; user 2026-11-11): docs/todo/09-queue-and-history.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
 
-- To do 9: Queue and history (medium; user 2026-11-11): docs/todo/09-queue-and-history.md
 - To do 10: Edge button (large; user 2026-11-11): docs/todo/10-edge-button.md
 
 ### Someday
 Everything else, unordered (grouped by area once it grows). A Someday to-do moves up only when it starts to bug the user.
 
+- To do 8: Playlists and whole channels (medium; user 2026-11-11; planned, then moved here by the user 2026-11-12): docs/todo/08-playlists.md
 - To do 11: An .exe installer (large; user 2026-11-11): docs/todo/11-installer.md
 
 ## Later, only if the user asks
