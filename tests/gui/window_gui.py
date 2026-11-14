@@ -13,6 +13,7 @@ import pytest
 from drive import (
     LINK,
     LINK2,
+    PAST,
     PROGRESS,
     TITLES,
     VIDEO_TITLE,
@@ -26,6 +27,7 @@ from drive import (
     press,
     type_text,
     wait_until,
+    write_history,
 )
 
 from video_downloader.app import (
@@ -35,6 +37,7 @@ from video_downloader.app import (
     TITLE,
     WAITING,
     App,
+    load_history,
 )
 from video_downloader.downloader import FFMPEG_MISSING, Failed, Kind
 
@@ -59,7 +62,8 @@ def files() -> FakeFiles:
 def app(
     request: pytest.FixtureRequest, fake: FakeDownload, files: FakeFiles, tmp_path: Path
 ) -> Iterator[App]:
-    app = open_window(fake, width=request.param, folder=tmp_path, files=files)
+    history = tmp_path / "history.json"
+    app = open_window(fake, history, request.param, folder=tmp_path, files=files)
     try:
         yield app
     finally:
@@ -252,6 +256,45 @@ def test_play_and_show_in_folder(
     assert files.calls[4:] == [("show", video)]
     finish(app, fake)
     assert app.downloads.selection() == (done,), "the user's choice stays"
+
+
+def test_past_downloads_are_listed_first(
+    fake: FakeDownload, files: FakeFiles, tmp_path: Path
+) -> None:
+    history = tmp_path / "history.json"
+    write_history(history, tmp_path)
+    app = open_window(fake, history, folder=tmp_path, files=files)
+    try:
+        tree = app.downloads
+        first, *_, newest = tree.get_children()
+        title = PAST[-1][0]
+        assert len(rows(app)) == len(PAST)
+        assert rows(app)[-1] == (title, "MP4 720p, subtitles", "Done")
+        assert tree.bbox(newest) and not tree.bbox(first), "the newest in view"
+        assert (app.status.get(), tree.selection()) == ("", ())
+        assert app.remove_button.instate(["disabled"]), "nothing selected"
+        video = tmp_path / f"{title}.mp4"
+        video.write_bytes(b"")
+        click_row(tree, newest)
+        assert app.status.get().startswith(f"Done: {title}.mp4"), app.status.get()
+        click(app.play_button)
+        assert files.calls == [("play", video)]
+
+        type_text(app.link_entry, LINK)  # this session's go below the past
+        press(app.link_entry, "Return")
+        wait_for_progress(app, "Enter in the link box")
+        finish(app, fake)
+        assert rows(app)[-1] == (VIDEO_TITLE, "MP4", "Done")
+        assert len(load_history(history) or []) == len(PAST) + 1, "saved at once"
+
+        tree.see(first)  # scrolled up
+        click_row(tree, first)
+        press(tree, "Delete")
+        assert first not in tree.get_children()
+        titles = [job.title for job in load_history(history) or []]
+        assert titles == [past[0] for past in PAST[1:]] + [VIDEO_TITLE]
+    finally:
+        app.root.destroy()
 
 
 def test_cancel_stops_the_download(app: App, fake: FakeDownload) -> None:

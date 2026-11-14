@@ -1,9 +1,11 @@
+import json
 import os
 import subprocess
 import threading
 import time
 import tkinter as tk
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,7 @@ from video_downloader.app import (
     CANCELLING,
     FAILED_COLOR,
     GONE,
+    HISTORY_SIZE,
     LOOKING_UP,
     NO_END,
     NO_SUBTITLES,
@@ -27,6 +30,8 @@ from video_downloader.app import (
     Job,
     State,
     done_message,
+    load_history,
+    save_history,
     show_command,
     shown_folder,
     window_width,
@@ -143,6 +148,25 @@ def rows(app: App) -> list[tuple[str, ...]]:
     """The list's rows as shown: Video, As and State."""
     tree = app.downloads
     return [tuple(map(str, tree.item(row, "values"))) for row in tree.get_children()]
+
+
+def saved(history: Path) -> list[Job]:
+    """What the history file holds; it has to be readable."""
+    jobs = load_history(history)
+    assert jobs is not None, "the history couldn't be read"
+    return jobs
+
+
+@contextmanager
+def next_session(app: App) -> Iterator[App]:
+    """A new window with the app's download, folder, files and history: what
+    the user sees when they open the app again."""
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        yield App(root, app.run_download, app.folder, app.files, app.history)
+    finally:
+        root.destroy()
 
 
 def test_window_has_its_parts(app: App) -> None:
@@ -494,6 +518,164 @@ def test_a_moved_or_deleted_file_is_not_opened(
     assert rows(app)[0][2] == "Done", "the download itself worked"
     app.show_button.invoke()
     assert files.calls == [("open_folder", tmp_path)], "the folder instead"
+
+
+def test_saved_files_are_in_the_list_next_time(
+    app: App, fake: FakeDownload, files: FakeFiles, tmp_path: Path
+) -> None:
+    title = "Ünï “video” {1} [x] $y"
+    video, audio = tmp_path / f"{title}.mp4", tmp_path / "Song.mp3"
+    video.write_bytes(b"")
+    fake.results = {
+        LINK: [Progress("Downloading: 50%", 50.0, title), Done(video, False)],
+        LINK2: [Failed("No video here.")],
+        LINK3: [Done(audio, already_there=True)],
+    }
+    add(app, LINK)
+    app.mp3_button.invoke()
+    add(app, LINK2)
+    add(app, LINK3)
+    wait_until_done(app)
+
+    with next_session(app) as again:
+        assert rows(again) == [(title, "MP4", "Done"), ("Song", "MP3", "Already there")]
+        assert (again.downloads.selection(), again.status.get()) == ((), "")
+        assert again.remove_button.instate(["disabled"]), "nothing selected"
+        past = again.downloads.get_children()[0]
+        select(again, past)
+        assert again.status.get() == done_message(Done(video, False))
+        assert again.progress_bar.cget("value") == 100
+        again.play_button.invoke()
+        again.show_button.invoke()
+        assert files.calls == [("play", video), ("show", video)]
+
+        add(again, LINK)
+        wait_until_done(again)
+        assert rows(again)[2] == (title, "MP4", "Done"), "a new row below the past"
+    assert len(saved(app.history)) == 3
+
+
+def test_remove_takes_a_row_out_of_the_history(app: App, tmp_path: Path) -> None:
+    video, gone = tmp_path / "Kept.mp4", tmp_path / "Gone.mp4"
+    video.write_bytes(b"")
+    save_history(
+        app.history,
+        [
+            Job(LINK, Kind.MP4, 720, True, State.DONE, "Kept", "Done.", file=video),
+            Job(LINK2, Kind.MP4, None, False, State.DONE, "Gone", "Done.", file=gone),
+            Job(LINK3, Kind.MP3, None, False, State.DONE, "Removed", file=video),
+        ],
+    )
+    with next_session(app) as again:
+        assert rows(again)[0] == ("Kept", "MP4 720p, subtitles", "Done")
+        kept, gone_row, removed = again.downloads.get_children()
+        select(again, gone_row)
+        again.play_button.invoke()  # Play finds it gone: left out from now on
+        titles = [job.title for job in saved(app.history)]
+        assert titles == ["Kept", "Removed"], "saved at once"
+        select(again, removed)
+        again.remove_button.invoke()
+        assert video.is_file(), "Remove never deletes a file"
+        assert again.downloads.get_children() == (kept, gone_row)
+    assert [job.title for job in saved(app.history)] == ["Kept"]
+
+
+def test_the_history_keeps_the_newest_downloads(tmp_path: Path) -> None:
+    history = tmp_path / "history.json"
+    jobs = [
+        Job(f"{LINK}/{n}", Kind.MP3, None, False, State.DONE, file=Path(f"{n}.mp3"))
+        for n in range(HISTORY_SIZE + 1)
+    ]
+    jobs.insert(5, Job(LINK, Kind.MP4, None, False, State.FAILED))
+    jobs.insert(7, Job(LINK, Kind.MP4, None, False, State.CANCELLED))
+    save_history(history, jobs)
+    kept = saved(history)
+    assert len(kept) == HISTORY_SIZE, "only saved files, the newest 200"
+    assert (kept[0].link, kept[-1].link) == (f"{LINK}/1", f"{LINK}/{HISTORY_SIZE}")
+    assert kept[0] == Job(
+        f"{LINK}/1", Kind.MP3, None, False, State.DONE, percent=100, file=Path("1.mp3")
+    )
+    assert not history.with_name("history.json.new").exists()
+
+
+def test_a_missing_or_broken_history_is_an_empty_one(app: App, tmp_path: Path) -> None:
+    history = tmp_path / "history.json"
+    assert load_history(history) == [], "not there yet"
+    for broken in (b"{", b"\xff\xfe\x00", b'{"link": "x"}', b"[1, null]"):
+        history.write_bytes(broken)
+        assert load_history(history) == [], broken
+    good = {
+        "link": LINK,
+        "kind": "mp4",
+        "height": 480,
+        "subtitles": False,
+        "title": "Fine",
+        "state": "Already there",
+        "message": "Already there.",
+        "file": str(tmp_path / "Fine.mp4"),
+    }
+    bad = [
+        {**good, "state": "Failed"},
+        {**good, "kind": "avi"},
+        {**good, "height": "480"},
+        {key: value for key, value in good.items() if key != "file"},
+    ]
+    history.write_text(json.dumps([*bad, good]), encoding="utf-8")
+    assert [job.title for job in saved(history)] == ["Fine"]
+
+    app.history.write_text("{", encoding="utf-8")
+    with next_session(app) as again:
+        assert rows(again) == []
+        add(again, LINK)
+        wait_until_done(again)
+    assert len(saved(app.history)) == 1, "the next save writes it anew"
+
+
+def test_a_failed_save_doesnt_stop_the_queue(
+    app: App,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    in_the_way = tmp_path / "a file, not a folder"
+    in_the_way.write_bytes(b"")
+    app.history = in_the_way / "history.json"
+    add(app, LINK)
+    add(app, LINK2)
+    wait_until_done(app)
+    assert [row[2] for row in rows(app)] == ["Done", "Done"], "the next one ran"
+    assert "FileExistsError" in capsys.readouterr().err, "the details, in the terminal"
+
+    def not_text(self: Path, *args: object, **kwargs: object) -> int:
+        raise UnicodeEncodeError("utf-8", "\udc80", 0, 1, "surrogates not allowed")
+
+    monkeypatch.setattr(Path, "write_text", not_text)
+    app.history = tmp_path / "history.json"
+    add(app, LINK)
+    add(app, LINK2)
+    wait_until_done(app)
+    assert [row[2] for row in rows(app)] == ["Done"] * 4, "the next one ran"
+    assert "UnicodeEncodeError" in capsys.readouterr().err
+
+
+def test_a_locked_history_is_not_written_over(
+    app: App, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old = Job(LINK, Kind.MP4, None, False, State.DONE, "Old", file=Path("Old.mp4"))
+    save_history(app.history, [old])
+    before = app.history.read_bytes()
+
+    def locked(self: Path, *args: object, **kwargs: object) -> str:
+        raise PermissionError(13, "In use by another program", str(self))
+
+    monkeypatch.setattr(Path, "read_text", locked)
+    with next_session(app) as again:
+        assert rows(again) == []
+        add(again, LINK)
+        wait_until_done(again)
+        assert rows(again) == [("Test video", "MP4", "Done")]
+    assert app.history.read_bytes() == before, "its downloads are still there"
+    assert "PermissionError" in capsys.readouterr().err
 
 
 def test_a_row_names_the_video_and_its_choices() -> None:

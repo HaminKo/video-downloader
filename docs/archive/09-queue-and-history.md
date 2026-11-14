@@ -25,4 +25,6 @@ The user said "go with your suggestions" to Claude's questions in the build chat
   - downloader.py: `Progress` carries the video's title.
   - The README's "Using it" moved into docs/using.md; the README keeps a summary.
   - For step B: finished rows come from the Done case in `check_events()`. Removing rows happens in `remove_selected()`. Past rows go in above this session's rows, as `Job`s with state Done or Already there and a `file`.
-- [ ] B: the history (about 80 lines of code, 70 of tests): load at start, save after each saved file and each Remove; a missing or broken file is an empty history.
+- [x] B: the history (2026-11-13). The user said "go with your suggestions": answer 10 as written; past rows look like this session's, the list opens scrolled to the newest; a file Play finds gone leaves the history; a broken file is an empty history, written anew. Decision: docs/decisions.md 2026-11-13.
+  - app.py: `load_history()` / `save_history()` (the whole list's saved rows each time, through `history.json.new`), `App.update_history()` after a saved file, Remove of a saved row and a file found gone. A file that is there but locked returns None: no saves that session.
+  - `App`, `start()` and the GUI test's `open_window()` take the history file; screenshots give each screen a temporary one (new screen: `history`).

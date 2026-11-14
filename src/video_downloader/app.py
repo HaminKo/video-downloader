@@ -3,8 +3,10 @@ video quality, English subtitles, the list of downloads, progress, a status
 line, and Play, Show in folder and Remove buttons.
 
 Links wait in the list and download one after another. The bar, the status
-line and the buttons under them are about the selected row."""
+line and the buttons under them are about the selected row. The list starts
+with the past downloads from the history file."""
 
+import json
 import os
 import queue
 import subprocess
@@ -12,7 +14,7 @@ import sys
 import threading
 import tkinter as tk
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -62,6 +64,11 @@ CHECK_EVERY = 100
 # How many rows the list of downloads shows; it scrolls for more.
 LIST_ROWS = 6
 
+# The downloads with a saved file, kept for the next sessions: the newest
+# HISTORY_SIZE of them. The tests pass a file of their own.
+HISTORY = downloader.DATA_FOLDER / "history.json"
+HISTORY_SIZE = 200
+
 # link, MP4 or MP3, folder, report, the quality limit (None: the best),
 # English subtitles, cancel (set: stop and report Cancelled)
 type Download = Callable[
@@ -83,6 +90,10 @@ class State(StrEnum):
 
 # The states of a download that has ended.
 ENDED = {State.DONE, State.ALREADY_THERE, State.FAILED, State.CANCELLED}
+
+# The states of a download whose file was saved: only these are kept in the
+# history.
+SAVED = {State.DONE, State.ALREADY_THERE}
 
 
 @dataclass
@@ -151,6 +162,8 @@ class App:
     download: what fetches the video (yt-dlp; the tests pass a fake).
     folder: where files go (default: Videos inside Downloads).
     files: what opens the downloaded file or its folder (the tests pass a fake).
+    history: the file of past downloads (default: HISTORY; the tests pass one
+    in a temporary folder).
     """
 
     def __init__(
@@ -159,11 +172,14 @@ class App:
         download: Download = downloader.download,
         folder: Path | None = None,
         files: Files | None = None,
+        history: Path | None = None,
     ) -> None:
         self.root = root
         self.run_download = download
         self.folder = folder or downloader.default_folder()
         self.files = files or Files()
+        self.history = history or HISTORY
+        self.keeps_history = True  # False: the file was there but unreadable
         self.jobs: dict[str, Job] = {}  # by the list's row id
         self.running = ""  # the row downloading now, if any
         self.cancel = threading.Event()  # set by Cancel; a new one per download
@@ -230,8 +246,9 @@ class App:
         )
         self.subtitles_box.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
-        # Every download of this session, oldest at the top: one at a time,
-        # the others wait their turn. One row is selected at most.
+        # Every download, oldest at the top: the past ones from the history,
+        # then this session's. One at a time, the others wait their turn. One
+        # row is selected at most.
         listed = ttk.Frame(frame)
         listed.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         listed.columnconfigure(0, weight=1)
@@ -267,6 +284,10 @@ class App:
         self.downloads.bind("<<TreeviewSelect>>", lambda _event: self.show_selected())
         self.downloads.bind("<Double-Button-1>", self.on_double_click)
         self.downloads.bind("<Delete>", lambda _event: self.remove_selected())
+        past = load_history(self.history)
+        self.keeps_history = past is not None  # don't write over what it holds
+        for job in past or []:  # the newest ends up in view
+            self.add_row(job)
 
         self.progress_bar = ttk.Progressbar(frame, maximum=100)
         self.progress_bar.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -326,14 +347,18 @@ class App:
             QUALITIES[self.quality.get()] if mp4 else None,
             self.subtitles.get() and mp4,
         )
-        row = self.downloads.insert("", "end", values=job.row())
-        self.jobs[row] = job
-        self.downloads.see(row)
+        self.add_row(job)
         self.link.set("")
         if self.busy:
             self.update_states()
         else:
             self.start_next(select=True)
+
+    def add_row(self, job: Job) -> None:
+        """Add the job at the bottom of the list, and scroll it into view."""
+        row = self.downloads.insert("", "end", values=job.row())
+        self.jobs[row] = job
+        self.downloads.see(row)
 
     def start_next(self, select: bool) -> None:
         """Start the first waiting download in the background, if there is
@@ -433,6 +458,8 @@ class App:
         # in 0.1 s, and only the last one shows.
         if job is not None and changed:
             self.update_row(row)
+            if job.state in SAVED:
+                self.update_history()
             if job.state in ENDED:
                 # The next one gets selected unless another row was selected
                 # since this one started: the user is looking at that one.
@@ -476,19 +503,26 @@ class App:
 
     def remove_selected(self) -> None:
         """Take the selected row out of the list: a waiting link won't be
-        downloaded. The file of a finished one stays where it is. Not the
-        running one: Cancel stops that."""
+        downloaded. The file of a finished one stays where it is, and the
+        history forgets it. Not the running one: Cancel stops that."""
         row = self.selected()
         if not row or row == self.running:
             return
         self.downloads.delete(row)
-        del self.jobs[row]
+        if self.jobs.pop(row).state in SAVED:
+            self.update_history()
         if self.running:
             self.select(self.running)
         else:
             self.show_status("")
             self.show_progress(0)
             self.update_states()
+
+    def update_history(self) -> None:
+        """Write the list's saved files to the history file, for the next
+        session; not when it couldn't be read at the start."""
+        if self.keeps_history:
+            save_history(self.history, self.jobs.values())  # in the list's order
 
     def on_double_click(self, event: tk.Event) -> None:
         # A double click on a row plays it; on a heading, nothing.
@@ -508,6 +542,7 @@ class App:
             job.message = GONE.format(name=job.file.name, folder=folder)
             job.failed, job.file = True, None
             self.update_row(row)
+            self.update_history()  # gone from it too
 
     def show_in_folder(self) -> None:
         """Open Explorer with the selected row's file selected, or the
@@ -601,6 +636,89 @@ def done_message(done: Done) -> str:
     return " ".join([f"{message}.", *notes]) if notes else message
 
 
+def load_history(file: Path) -> list[Job] | None:
+    """The past downloads in the history file, oldest first. A file that isn't
+    there or is broken is an empty history, and an entry that can't be read
+    is left out: the next save writes the file anew without it. None: the
+    file is there but couldn't be opened (locked by a virus scanner, or not
+    allowed), so it must not be written over (details in the terminal)."""
+    try:
+        entries = json.loads(file.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    except OSError:
+        traceback.print_exc()
+        return None
+    except ValueError:  # not UTF-8, or not JSON
+        return []
+    if not isinstance(entries, list):
+        return []
+    jobs: list[Job] = []
+    for entry in entries:
+        try:
+            jobs.append(past_job(entry))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return jobs
+
+
+def save_history(file: Path, jobs: Iterable[Job]) -> None:
+    """Write the jobs with a saved file to the history file, the newest
+    HISTORY_SIZE of them, oldest first. One whose file Play found gone has
+    none any more, so it is left out. The new text goes into a file next to
+    it first, which then replaces it: a save that stops halfway leaves the
+    old one. A save that fails is skipped (the details in the terminal): the
+    history only helps, and the download itself is fine. It must not raise:
+    the window moves on to the next waiting link after it."""
+    entries = [
+        history_entry(job)
+        for job in jobs
+        if job.state in SAVED and job.file is not None
+    ]
+    new = file.with_name(f"{file.name}.new")
+    try:
+        text = json.dumps(entries[-HISTORY_SIZE:], ensure_ascii=False, indent=2)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        new.write_text(text, encoding="utf-8")
+        new.replace(file)
+    except (OSError, ValueError):  # ValueError: a title that isn't valid text
+        traceback.print_exc()
+
+
+def history_entry(job: Job) -> dict[str, object]:
+    """The job as the history file holds it."""
+    return {
+        "link": job.link,
+        "kind": str(job.kind),
+        "height": job.height,
+        "subtitles": job.subtitles,
+        "title": job.title,
+        "state": str(job.state),
+        "message": job.message,
+        "file": str(job.file),
+    }
+
+
+def past_job(entry: dict[str, object]) -> Job:
+    """A history file's entry as a finished row; raises KeyError, TypeError
+    or ValueError when it isn't one."""
+    state = State(entry["state"])
+    height = entry["height"]
+    if state not in SAVED or not isinstance(height, int | None):
+        raise ValueError(entry)
+    return Job(
+        link=str(entry["link"]),
+        kind=Kind(entry["kind"]),
+        height=height,
+        subtitles=bool(entry["subtitles"]),
+        state=state,
+        title=str(entry["title"]),
+        message=str(entry["message"]),
+        percent=100,
+        file=Path(str(entry["file"])),
+    )
+
+
 def window_width(root: tk.Misc) -> int:
     """WIDTH in the display's own pixels: 900 at 150% scaling."""
     return round(WIDTH * root.winfo_fpixels("1i") / 96)
@@ -610,6 +728,7 @@ def start(
     download: Download = downloader.download,
     folder: Path | None = None,
     files: Files | None = None,
+    history: Path | None = None,
 ) -> App:
     """Build the window as the user sees it; the GUI test starts it this way
     too. The parameters are App's."""
@@ -618,7 +737,7 @@ def start(
         import ctypes
 
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    return App(tk.Tk(), download, folder, files)
+    return App(tk.Tk(), download, folder, files, history)
 
 
 def main() -> None:

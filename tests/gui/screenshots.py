@@ -8,7 +8,9 @@ prints each file's path. The window pops up on top for a moment.
 """
 
 import sys
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
 
 from drive import (
     LINK,
@@ -22,10 +24,11 @@ from drive import (
     screenshot,
     type_text,
     wait_until,
+    write_history,
 )
 
 from video_downloader.app import App
-from video_downloader.downloader import FFMPEG_MISSING, Failed
+from video_downloader.downloader import FFMPEG_MISSING, Failed, default_folder
 
 
 def opened(app: App, fake: FakeDownload) -> None:
@@ -72,6 +75,12 @@ def queued(app: App, fake: FakeDownload) -> None:
     press(app.link_entry, "Return")
 
 
+def with_history(app: App, fake: FakeDownload) -> None:
+    """Opened with past downloads in the history (PAST), then a link typed:
+    it downloads below them, in view."""
+    downloading(app, fake)
+
+
 SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "start": opened,
     "progress": downloading,
@@ -79,7 +88,11 @@ SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "error": failed,
     "cancelled": cancelled,
     "queue": queued,
+    "history": with_history,
 }
+
+# The screens whose window opens with past downloads; the others with none.
+WITH_HISTORY = {"history"}
 
 
 def main(names: list[str]) -> int:
@@ -89,13 +102,18 @@ def main(names: list[str]) -> int:
         return 2
     for name in names or SCREENS:
         fake = FakeDownload()
-        app = open_window(fake)
-        try:
-            SCREENS[name](app, fake)
-            path = screenshot(app, name)
-        finally:
-            fake.finish()
-            app.root.destroy()
+        # A history of its own, so the real one is never read or changed.
+        with tempfile.TemporaryDirectory() as data:
+            history = Path(data) / "history.json"
+            if name in WITH_HISTORY:
+                write_history(history, default_folder())
+            app = open_window(fake, history)
+            try:
+                SCREENS[name](app, fake)
+                path = screenshot(app, name)
+            finally:
+                fake.finish()
+                app.root.destroy()
         print(path)
     print(f"Folder: {SCREENSHOT_DIR}")
     return 0

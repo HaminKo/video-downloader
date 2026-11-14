@@ -19,7 +19,15 @@ from tkinter import ttk
 
 from PIL import ImageGrab
 
-from video_downloader.app import App, Files, start
+from video_downloader.app import (
+    App,
+    Files,
+    Job,
+    State,
+    done_message,
+    save_history,
+    start,
+)
 from video_downloader.downloader import Cancelled, Done, Failed, Kind, Progress, Report
 
 SCREENSHOT_DIR = Path(tempfile.gettempdir()) / "video-downloader-screenshots"
@@ -33,6 +41,19 @@ LINK2 = "https://www.youtube.com/watch?v=def_456-UVW"
 VIDEO_TITLE = "Test video"
 TITLES = {LINK: VIDEO_TITLE, LINK2: "Second video"}
 PROGRESS = "Downloading video: 40% of 12 MB"
+
+# The past downloads write_history() puts in the history, oldest first: the
+# title, MP4 or MP3, the quality limit (None: the best) and subtitles.
+PAST = [
+    ("Cooking pasta at home", Kind.MP4, None, False),
+    ("Morning news", Kind.MP4, 720, False),
+    ("Lecture 1: Introduction", Kind.MP4, None, True),
+    ("Piano practice", Kind.MP3, None, False),
+    ("Cat video", Kind.MP4, 480, False),
+    ("Lecture 2: Basics", Kind.MP4, None, True),
+    ("Favourite song", Kind.MP3, None, False),
+    ("Trip to the mountains", Kind.MP4, 720, True),
+]
 
 # Tk's key names for the printable characters that aren't letters or digits.
 KEY_NAMES = {
@@ -157,8 +178,21 @@ def wait_until(app: App, condition: Callable[[], bool], what: str) -> None:
         time.sleep(0.01)
 
 
+def write_history(history: Path, folder: Path) -> None:
+    """Write PAST into the history file, as files saved in `folder`."""
+    jobs: list[Job] = []
+    for number, (title, kind, height, subtitles) in enumerate(PAST):
+        file = folder / f"{title}.{kind}"
+        message = done_message(Done(file, already_there=False))
+        link = f"https://www.youtube.com/watch?v=past{number}"
+        job = Job(link, kind, height, subtitles, State.DONE, title, message, file=file)
+        jobs.append(job)
+    save_history(history, jobs)
+
+
 def open_window(
     download: FakeDownload,
+    history: Path,
     width: int | None = None,
     folder: Path | None = None,
     files: FakeFiles | None = None,
@@ -166,12 +200,14 @@ def open_window(
     """Start the window as main() does, on top, with the link box focused.
 
     download: the fake that stands in for yt-dlp.
+    history: the file of past downloads; never the real one, which the
+    screenshots (run without pytest's conftest.py) would change.
     width: in screen pixels; None keeps the size the window opens with.
     folder: where the window says files go; None: the real Downloads\\Videos,
     which the fakes never write to.
     files: the fake that stands in for opening files (default: a new one).
     """
-    app = start(download, folder, files or FakeFiles())
+    app = start(download, folder, files or FakeFiles(), history)
     root = app.root
     try:
         root.attributes("-topmost", True)

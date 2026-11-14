@@ -76,14 +76,17 @@ PRESETS: dict[Kind, "_Params"] = {
 FILE_NAME = "%(title).150B.%(ext)s"
 FILE_NAME_WITH_QUALITY = "%(title).150B ({height}p).%(ext)s"
 
+# The app's own folder for what it keeps between sessions: the sign-in file
+# and the history of downloads.
+DATA_FOLDER = (
+    Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming")
+    / "video-downloader"
+)
+
 # Sign-ins the user exported from their browser as a cookies.txt (Reddit's
 # only), used whenever the file is there. yt-dlp can't read Edge's or Chrome's
 # own cookies on Windows (docs/research/signing-in.md, docs/signing-in.md).
-COOKIES = (
-    Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming")
-    / "video-downloader"
-    / "cookies.txt"
-)
+COOKIES = DATA_FOLDER / "cookies.txt"
 
 # yt-dlp's steps after the download, as the window names them.
 STEP_TEXTS = {
