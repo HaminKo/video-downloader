@@ -32,19 +32,34 @@ from video_downloader.app import (
     save_history,
     start,
 )
-from video_downloader.downloader import Cancelled, Done, Failed, Kind, Progress, Report
+from video_downloader.downloader import (
+    NOT_AVAILABLE,
+    Cancelled,
+    Done,
+    Failed,
+    Kind,
+    Playlist,
+    Progress,
+    Report,
+)
 
 SCREENSHOT_DIR = Path(tempfile.gettempdir()) / "video-downloader-screenshots"
 
 # The links the GUI test and the screenshots type.
 LINK = "https://www.youtube.com/watch?v=abc_123-XYZ"
 LINK2 = "https://www.youtube.com/watch?v=def_456-UVW"
+PLAYLIST_LINK = "https://www.youtube.com/playlist?list=PLabc_123-XYZ"
 
 # What FakeDownload reports: the video's title by its link (VIDEO_TITLE for
-# any other), and this progress.
+# any other), and this progress. For PLAYLIST_LINK, the playlist's title, its
+# progress, what became of its videos and its first video's name.
 VIDEO_TITLE = "Test video"
-TITLES = {LINK: VIDEO_TITLE, LINK2: "Second video"}
+PLAYLIST_TITLE = "Holiday videos"
+TITLES = {LINK: VIDEO_TITLE, LINK2: "Second video", PLAYLIST_LINK: PLAYLIST_TITLE}
 PROGRESS = "Downloading video: 40% of 12 MB"
+PLAYLIST_PROGRESS = f"Video 1 of 3: {PROGRESS}"
+PLAYLIST = Playlist(3, 2, 0, why=NOT_AVAILABLE)
+FIRST_VIDEO = "At the beach"
 
 # The past downloads write_history() puts in the history, oldest first: the
 # title, MP4 or MP3, the quality limit (None: the best) and subtitles.
@@ -177,9 +192,10 @@ def sending() -> Iterator[None]:
 
 
 class FakeDownload:
-    """Stands in for yt-dlp, so nothing touches the internet: reports PROGRESS,
-    then waits for finish() before reporting Done, or the failure given to
-    finish(); or for Cancel, then reports Cancelled."""
+    """Stands in for yt-dlp, so nothing touches the internet: reports PROGRESS
+    (PLAYLIST_PROGRESS for PLAYLIST_LINK), then waits for finish() before
+    reporting Done, or the failure given to finish(); or for Cancel, then
+    reports Cancelled."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Kind, Path, int | None, bool]] = []
@@ -198,7 +214,8 @@ class FakeDownload:
     ) -> None:
         self.calls.append((link, kind, folder, height, subtitles))
         title = TITLES.get(link, VIDEO_TITLE)
-        report(Progress(PROGRESS, 40.0, title))
+        playlist = link == PLAYLIST_LINK
+        report(Progress(PLAYLIST_PROGRESS if playlist else PROGRESS, 40.0, title))
         deadline = time.monotonic() + 10
         while not (self.finished.is_set() or cancel.is_set()):
             if time.monotonic() > deadline:
@@ -207,6 +224,9 @@ class FakeDownload:
         self.finished.clear()  # the next download waits for its own finish()
         if cancel.is_set():
             report(Cancelled())
+        elif playlist:
+            first = folder / title / f"{FIRST_VIDEO}.{kind}"
+            report(self.failure or Done(first, False, playlist=PLAYLIST))
         else:
             report(self.failure or Done(folder / f"{title}.{kind}", False))
 

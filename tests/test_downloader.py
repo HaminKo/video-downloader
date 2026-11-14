@@ -33,6 +33,7 @@ from video_downloader.downloader import (
     Failed,
     Kind,
     Log,
+    Playlist,
     Progress,
     download,
     options,
@@ -60,12 +61,13 @@ def test_settings_are_yt_dlps_own_presets(kind: Kind) -> None:
     assert changed == PRESETS[kind]
 
 
-def test_options_save_by_title_in_the_folder_one_video_only(tmp_path: Path) -> None:
+def test_options_save_by_title_a_playlist_in_a_folder(tmp_path: Path) -> None:
     settings = options(Kind.MP4, tmp_path)
     assert settings.get("paths") == {"home": str(tmp_path)}
-    assert settings.get("outtmpl") == "%(title).150B.%(ext)s"
+    assert settings.get("outtmpl") == "%(playlist_title|.).80B/%(title).150B.%(ext)s"
+    # A video in a playlist is just that video; a playlist is all of it.
     assert settings.get("noplaylist") is True
-    assert settings.get("playlist_items") == "1"
+    assert "playlist_items" not in settings
     assert settings.get("merge_output_format") == "mp4"
     assert options(Kind.MP3, tmp_path).get("final_ext") == "mp3"
 
@@ -92,7 +94,7 @@ def test_height_limit_comes_right_after_h264(tmp_path: Path) -> None:
         assert sort == ["vcodec:h264", f"res:{height}", *preset[1:]]
     assert options(Kind.MP4, tmp_path).get("format_sort") == preset
     assert options(Kind.MP4, tmp_path, 720).get("outtmpl") == (
-        "%(title).150B (720p).%(ext)s"
+        "%(playlist_title|.).80B/%(title).150B (720p).%(ext)s"
     )
     assert PRESETS[Kind.MP4].get("format_sort") == preset, "the preset was changed"
     assert options(Kind.MP3, tmp_path, 720) == options(Kind.MP3, tmp_path)
@@ -379,12 +381,25 @@ def clip_link(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     if shutil.which("ffmpeg") is None:
         pytest.skip("needs ffmpeg")
     site = tmp_path_factory.mktemp("site")
-    # A page with two videos, which yt-dlp treats as a playlist.
-    (site / "two.html").write_text(
-        "<html><head><title>Two clips</title></head><body>"
-        '<video src="clip.mp4"></video><video src="clip2.mp4"></video>'
-        "</body></html>"
-    )
+    # Pages with two videos, which yt-dlp treats as a playlist named after
+    # the page, its videos "Two clips (1)" and "(2)": both there, one or both
+    # missing, with English subtitles for the first only.
+    subtitled = '<track kind="subtitles" src="clip.vtt" srclang="{}">'
+    for page, first, second in (
+        ("two.html", "clip.mp4", "clip2.mp4"),
+        ("one-missing.html", "missing.mp4", "clip.mp4"),
+        ("both-missing.html", "missing.mp4", "gone.mp4"),
+        ("two-subtitled.html", "clip.mp4", "clip2.mp4"),
+    ):
+        tracks = ("", "")
+        if page == "two-subtitled.html":
+            tracks = (subtitled.format("en"), subtitled.format("de"))
+        (site / page).write_text(
+            "<html><head><title>Two clips</title></head><body>"
+            f'<video src="{first}">{tracks[0]}</video>'
+            f'<video src="{second}">{tracks[1]}</video>'
+            "</body></html>"
+        )
     subprocess.run(
         ["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i",
          "testsrc=duration=1:size=160x120:rate=10", "-f", "lavfi", "-i",
@@ -568,13 +583,53 @@ def test_broken_sign_in_file_gives_a_plain_message(
     assert event.message.startswith("Something went wrong")
 
 
-def test_playlist_downloads_its_first_video_and_says_so(
+@pytest.mark.parametrize("kind", list(Kind))
+def test_playlist_saves_every_video_into_a_folder_of_its_own(
+    clip_link: str, kind: Kind, tmp_path: Path
+) -> None:
+    page = clip_link.replace("clip.mp4", "two.html")
+    events = run(page, kind, tmp_path)
+    folder = tmp_path / "Two clips"
+    names = [f"Two clips (1).{kind}", f"Two clips (2).{kind}"]
+    assert events[-1] == Done(folder / names[0], False, playlist=Playlist(2, 2, 0))
+    # An MP3's source is deleted after each video.
+    assert sorted(path.name for path in folder.iterdir()) == names
+    assert list(tmp_path.iterdir()) == [folder]
+    shown = [event for event in events if isinstance(event, Progress)]
+    assert shown[0] == Progress("Video 1 of 2: Looking it up...", None, "Two clips")
+    assert Progress("Video 2 of 2: Looking it up...", None, "Two clips") in shown
+    assert any(e.text.startswith("Video 2 of 2: Downloading: ") for e in shown)
+    assert all(event.title == "Two clips" for event in shown)
+
+    # The second time nothing is downloaded.
+    again = run(page, kind, tmp_path)
+    assert again[-1] == Done(folder / names[0], True, playlist=Playlist(2, 0, 2))
+
+
+def test_a_video_that_fails_doesnt_stop_the_playlist(
     clip_link: str, tmp_path: Path
 ) -> None:
-    events = run(clip_link.replace("clip.mp4", "two.html"), Kind.MP4, tmp_path)
-    assert isinstance(events[-1], Done)
-    assert events[-1].playlist
-    assert [path.name for path in tmp_path.iterdir()] == [events[-1].path.name]
+    page = clip_link.replace("clip.mp4", "one-missing.html")
+    first = tmp_path / "Two clips" / "Two clips (2).mp4"  # the first saved
+    assert run(page, Kind.MP4, tmp_path)[-1] == Done(
+        first, False, playlist=Playlist(2, 1, 0, why=NOT_AVAILABLE)
+    )
+    none = clip_link.replace("clip.mp4", "both-missing.html")
+    assert run(none, Kind.MP4, tmp_path / "None")[-1] == Failed(
+        "None of the 2 videos could be downloaded. "
+        f"Why the first failed: {NOT_AVAILABLE}"
+    )
+
+
+def test_a_playlist_counts_the_videos_without_english_subtitles(
+    clip_link: str, tmp_path: Path
+) -> None:
+    page = clip_link.replace("clip.mp4", "two-subtitled.html")
+    first = tmp_path / "Two clips" / "Two clips (1).mp4"
+    assert run(page, Kind.MP4, tmp_path, subtitles=True)[-1] == Done(
+        first, False, playlist=Playlist(2, 2, 0, no_subtitles=1)
+    )
+    assert first.with_suffix(".en.srt").is_file()
 
 
 def cancel_at(
@@ -671,6 +726,44 @@ def test_cancel_while_converting_keeps_the_mp4_already_there(
     assert events[-1] == Cancelled()
     assert [path.name for path in tmp_path.iterdir()] == ["clip.mp4"]
     assert (tmp_path / "clip.mp4").read_bytes() == mp4
+
+
+@pytest.mark.parametrize(
+    ("kind", "text"),
+    [
+        (Kind.MP4, "Video 2 of 2: Looking it up"),
+        (Kind.MP4, "Video 2 of 2: Downloading"),
+        (Kind.MP3, "Video 2 of 2: Converting to MP3"),
+    ],
+    ids=["between videos", "while downloading", "while converting to MP3"],
+)
+def test_cancel_during_a_playlist_keeps_the_videos_finished(
+    clip_link: str, kind: Kind, text: str, tmp_path: Path
+) -> None:
+    page = clip_link.replace("clip.mp4", "two.html")
+    events = cancel_at(text, page, kind, tmp_path)
+    first = tmp_path / "Two clips" / f"Two clips (1).{kind}"
+    assert events[-1] == Cancelled((first,))
+    # The second video's files are gone, the first's MP3 source too.
+    assert list(first.parent.iterdir()) == [first]
+
+
+def test_a_video_named_like_one_finished_before_it(
+    clip_link: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Two videos of one name: yt-dlp takes the second for the first's file,
+    # which is already there. It still converts it to MP3 (and Cancel stops
+    # it then); its files have the same names as the first video's.
+    monkeypatch.setattr(downloader, "FILE_NAME", "Same.%(ext)s")
+    page = clip_link.replace("clip.mp4", "two.html")
+    same = tmp_path / "Two clips" / "Same.mp3"
+    assert run(page, Kind.MP3, tmp_path)[-1] == Done(
+        same, False, playlist=Playlist(2, 1, 1)
+    )
+    same.unlink()
+    events = cancel_at("Video 2 of 2: Converting to MP3", page, Kind.MP3, tmp_path)
+    assert events[-1] == Cancelled((same,))
+    assert list(same.parent.iterdir()) == [same], "Cancel deleted the first video"
 
 
 def test_remove_unfinished_deletes_only_new_files_named_like_the_video(

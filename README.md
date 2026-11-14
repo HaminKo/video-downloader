@@ -10,6 +10,7 @@ Downloading works, and when a download fails the window says why in plain words.
 ## Using it
 Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, its quality (Best, 720p or 480p) and whether you want English subtitles, then press Download (or Enter).
 - Paste more links while one downloads: they wait in the list and download one after another, each with the choices it was added with.
+- A link to a playlist or channel downloads all its videos, into a folder named after it.
 - The list also shows what you downloaded before (the newest 200), so you can play an earlier download again.
 - Files go to the **Videos** folder inside your Downloads folder: MP4s that play everywhere (H.264 video with AAC sound), or MP3s.
 - Click a row in the list to see its progress or message. **Play** and **Show in folder** open its file, **Remove** takes it out of the list (never deletes a file), and **Cancel** stops the running download.

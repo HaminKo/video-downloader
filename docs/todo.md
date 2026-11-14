@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: To do 8, step B (playlists)
+- Now: To do 8, step C (ask above 50)
 - Next: Nothing under Bugs me
 - Updated: 2026-11-14
 

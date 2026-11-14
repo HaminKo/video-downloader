@@ -13,9 +13,13 @@ from pathlib import Path
 
 import pytest
 from drive import (
+    FIRST_VIDEO,
     LINK,
     LINK2,
     PAST,
+    PLAYLIST_LINK,
+    PLAYLIST_PROGRESS,
+    PLAYLIST_TITLE,
     PROGRESS,
     TITLES,
     VIDEO_TITLE,
@@ -47,8 +51,9 @@ from video_downloader.app import (
     WAITING,
     App,
     load_history,
+    shown_folder,
 )
-from video_downloader.downloader import FFMPEG_MISSING, Failed, Kind
+from video_downloader.downloader import FFMPEG_MISSING, NOT_AVAILABLE, Failed, Kind
 
 # The window's sizes, in screen pixels: None is the size it opens with, which
 # is also its smallest.
@@ -332,6 +337,31 @@ def test_play_and_show_in_folder(
     assert files.calls[4:] == [("show", video)]
     finish(app, fake)
     assert app.downloads.selection() == (done,), "the user's choice stays"
+
+
+def test_a_playlist_is_one_row_that_counts_its_videos(
+    app: App, fake: FakeDownload, files: FakeFiles
+) -> None:
+    type_text(app.link_entry, PLAYLIST_LINK)
+    press(app.link_entry, "Return")
+    progress = PLAYLIST_PROGRESS
+    wait_until(app, lambda: app.status.get() == progress, "the playlist's progress")
+    assert rows(app) == [(PLAYLIST_TITLE, "MP4", "Downloading 40%")]
+    finish(app, fake)
+    folder = shown_folder(app.folder / PLAYLIST_TITLE)
+    assert app.status.get() == (
+        f"Done: 2 of 3 videos saved, 1 failed (in {folder}). "
+        f"Why the first failed: {NOT_AVAILABLE}"
+    )
+    assert str(app.status_label.cget("foreground")) == "", "not a failure"
+    assert rows(app) == [(PLAYLIST_TITLE, "MP4", "Done")]
+    # Play and Show in folder: the playlist's first video.
+    first = app.folder / PLAYLIST_TITLE / f"{FIRST_VIDEO}.mp4"
+    first.parent.mkdir()
+    first.write_bytes(b"")  # the fake download saves nothing
+    click(app.play_button)
+    click(app.show_button)
+    assert files.calls == [("play", first), ("show", first)]
 
 
 def test_past_downloads_are_listed_first(

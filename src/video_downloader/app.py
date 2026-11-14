@@ -41,6 +41,7 @@ from video_downloader.downloader import (
     Event,
     Failed,
     Kind,
+    Playlist,
     Progress,
     Report,
 )
@@ -62,11 +63,10 @@ CANCELLING = "Cancelling..."
 CANCELLED = "Cancelled."
 WAITING = "Waiting: starts when the downloads above it have ended."
 NO_END = "Something went wrong: the download stopped without saying why."
-PLAYLIST_NOTE = (
-    "The link is a playlist: the app only takes its first video "
-    "(playlists aren't supported yet)."
-)
+# A cancelled playlist whose first videos were finished.
+KEPT = "Cancelled. Kept the {videos} already finished (in {folder})."
 NO_SUBTITLES = "No English subtitles found."
+SOME_WITHOUT_SUBTITLES = "No English subtitles for {count} of the videos."
 GONE = "Can't play {name}: it isn't in {folder} anymore."
 LINK_RECEIVED = "Link received: choose MP4 or MP3, then Download."
 
@@ -553,8 +553,11 @@ class App:
                 case Failed(message):
                     job.state, job.message, job.percent = State.FAILED, message, 0
                     job.failed = True
-                case Cancelled():
-                    job.state, job.message, job.percent = State.CANCELLED, CANCELLED, 0
+                case Cancelled(kept):
+                    job.state, job.percent = State.CANCELLED, 0
+                    job.message = cancelled_message(kept)
+                    # A playlist's finished videos: Play plays the first.
+                    job.file = kept[0] if kept else None
                 case _:
                     continue
             changed = True
@@ -767,16 +770,48 @@ def shown_folder(folder: Path) -> Path:
 
 def done_message(done: Done) -> str:
     folder = shown_folder(done.path.parent)
+    if done.playlist is not None:
+        return playlist_message(done.playlist, folder)
     if done.already_there:
         message = f"Already there, not downloaded again: {done.path.name} (in {folder})"
     else:
         message = f"Done: {done.path.name} (in {folder})"
-    notes: list[str] = []
-    if done.no_subtitles:
-        notes.append(NO_SUBTITLES)
-    if done.playlist:
-        notes.append(PLAYLIST_NOTE)
-    return " ".join([f"{message}.", *notes]) if notes else message
+    return f"{message}. {NO_SUBTITLES}" if done.no_subtitles else message
+
+
+def playlist_message(playlist: Playlist, folder: Path) -> str:
+    """A finished playlist's status line, for example "Done: 10 of 12 videos
+    saved, 1 was already there, 1 failed (in Downloads\\Videos\\My list).
+    Why the first failed: ..." (the reason of the others: in the terminal)."""
+    total = videos(playlist.videos)
+    if playlist.saved:
+        parts = [f"Done: {playlist.saved} of {total} saved"]
+        if playlist.there:
+            was = "was" if playlist.there == 1 else "were"
+            parts.append(f"{playlist.there} {was} already there")
+    else:
+        parts = [f"Already there, not downloaded again: {playlist.there} of {total}"]
+    if playlist.failed:
+        parts.append(f"{playlist.failed} failed")
+    notes = [f"{', '.join(parts)} (in {folder})."]
+    if playlist.why:
+        notes.append(downloader.WHY_FIRST_FAILED.format(why=playlist.why))
+    if playlist.no_subtitles:
+        notes.append(SOME_WITHOUT_SUBTITLES.format(count=playlist.no_subtitles))
+    return " ".join(notes)
+
+
+def cancelled_message(kept: tuple[Path, ...]) -> str:
+    """The status line after Cancel; `kept`: a playlist's finished videos."""
+    if not kept:
+        return CANCELLED
+    folder = shown_folder(kept[0].parent)
+    return KEPT.format(videos=videos(len(kept)), folder=folder)
+
+
+def videos(count: int) -> str:
+    """A number of videos: "1 video", "12 videos"."""
+    return f"{count} video" if count == 1 else f"{count} videos"
 
 
 def load_history(file: Path) -> list[Job] | None:

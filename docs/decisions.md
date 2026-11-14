@@ -2,6 +2,18 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: A playlist downloads all its videos into a folder of its own, as one row
+- **Decision:** a playlist or channel link downloads every video (`playlist_items` dropped; `noplaylist` stays, so a `watch?v=...&list=...` link is just that video), into `Videos\<the playlist's title, cut to 80 bytes>\` (`%(playlist_title|.).80B/` in front of the file name; a single video stays in Videos). In the window it is one row: the playlist's title, "Video N of M: ..." in front of the progress (from yt-dlp's `match_filter`), the bar and the State column's percent for the current video. The end message counts saved, already there and failed videos (failed = the playlists' `n_entries` minus the finished videos) with the first failure's reason, in red only when none was saved. Play and Show in folder use the first finished video. Cancel also acts between videos, stops the rest and keeps the finished videos (`Cancelled.kept`): in the post hook a finished video's files join the "there before" set and `prefixes` is emptied. A channel's home link gets yt-dlp's default, a folder per tab. A finished playlist is kept in the history like any finished row; a cancelled one isn't. To do 8, step B.
+- **Reason:** the user's To do 8 ("Playlists and whole channels").
+- **Who decided:** the user, on Claude's suggestions (To do 8's plan of 2026-11-12, answers 1 and 3-9; step B's questions 1-3, 2026-11-14).
+- **Rejected:**
+  - counting the videos in the `match_filter` call before each lookup, or counting failures from the "ERROR:" lines: yt-dlp skips that call for entries it can't tell are single videos (Reddit, X, the generic extractor), so a failed lookup there wouldn't count (code review; docs/research/yt-dlp-library.md "Playlists and channels")
+  - rewriting a channel's home link to `/videos`: YouTube-only code in the app
+  - "Downloading 3 of 12" in the row's State column: one more field in `Progress` and `Job` for little gain
+  - keeping a cancelled playlist with finished videos in the history: no cancelled row is kept
+  - yt-dlp's `FFmpegConcat` (joins a "multi-part" video on a few sites into one file): no case seen
+- **Left as is (code review, no case seen):** "Kept the N videos already finished" also counts videos that were already there; Play finding a playlist's first video gone drops the row from the history, though its other videos are still there; a playlist none of whose videos could be saved leaves its empty folder; a site that wraps a single video as a playlist of one puts it into a folder.
+
 ## 2026-11-14: A failed video doesn't end the download; yt-dlp's errors are read from a logger
 - **Decision:** yt-dlp gets `ignoreerrors: "only_download"` (the command line's default) and a `logger` (`Log` in downloader.py) that prints warnings and errors to the terminal as before and keeps every line starting "ERROR:". A failed download shows the first one's plain message, the same text the `DownloadError` had; `CookieLoadError` (a broken sign-in file) is the one failure that still raises. Groundwork for playlists (To do 8, step A), no visible change.
 - **Reason:** without `ignoreerrors`, one failed video ends a whole playlist (docs/research/yt-dlp-library.md "Playlists and channels").
@@ -230,7 +242,7 @@ Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who d
 - **Also chosen in To do 3, on Claude's suggestions:**
   - file name: the video's title, cut to 150 bytes. Rejected: yt-dlp's default `Title [id]`, which never clashes but looks cluttered; the cost is that two videos with the same title share a name, so the second counts as "already there"
   - a file already there is skipped, with a message
-  - a playlist or channel link downloads one video and says playlists aren't supported yet (without a setting, yt-dlp downloads all of it)
+  - a playlist or channel link downloads one video and says playlists aren't supported yet (without a setting, yt-dlp downloads all of it) (replaced 2026-11-14: To do 8 downloads all of it)
   - one download at a time, no Cancel button; closing the window stops it (Cancel button added 2026-11-12: To do 13; a queue of links added 2026-11-12: To do 9)
   - the window opens 600 px wide at normal size, scaled with the display's DPI; that is also its smallest size
   - download folder fixed to Downloads\Videos; no "Open folder" button (replaced 2026-11-12: To do 12 added Play and Show in folder)

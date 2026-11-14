@@ -25,7 +25,6 @@ from video_downloader.app import (
     NO_END,
     NO_SUBTITLES,
     PASTE_A_LINK,
-    PLAYLIST_NOTE,
     QUALITIES,
     TITLE,
     WAITING,
@@ -44,11 +43,13 @@ from video_downloader.app import (
     window_width,
 )
 from video_downloader.downloader import (
+    NOT_AVAILABLE,
     Cancelled,
     Done,
     Event,
     Failed,
     Kind,
+    Playlist,
     Progress,
     Report,
 )
@@ -63,7 +64,8 @@ class FakeDownload:
     """Stands in for yt-dlp: reports the link's events in `results` (or else
     `events`) at once and remembers the calls. A link in `wait_for_cancel`
     reports only their progress, then waits for Cancel and reports
-    Cancelled: one download's last report must be its only end."""
+    Cancelled (with a playlist's videos in `kept`): one download's last
+    report must be its only end."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Kind, Path, int | None, bool]] = []
@@ -73,6 +75,7 @@ class FakeDownload:
         ]
         self.results: dict[str, list[Event]] = {}
         self.wait_for_cancel: set[str] = set()
+        self.kept: tuple[Path, ...] = ()
 
     def __call__(
         self,
@@ -90,7 +93,7 @@ class FakeDownload:
             if isinstance(event, Progress) or not until_cancelled:
                 report(event)
         if until_cancelled and cancel.wait(timeout=5):
-            report(Cancelled())
+            report(Cancelled(self.kept))
 
 
 class FakeFiles(Files):
@@ -393,6 +396,28 @@ def test_cancel_stops_the_download(app: App, fake: FakeDownload) -> None:
     assert app.cancel_button.instate(["disabled"])
     assert app.play_button.instate(["disabled"]), "nothing to play"
     assert app.kind.get() == Kind.MP3, "choices kept"
+
+
+def test_cancel_during_a_playlist_plays_its_finished_videos(
+    app: App, fake: FakeDownload, files: FakeFiles, tmp_path: Path
+) -> None:
+    first = tmp_path / "My list" / "First.mp4"
+    first.parent.mkdir()
+    first.write_bytes(b"a video")
+    fake.wait_for_cancel = {LINK}
+    fake.kept = (first, first.with_name("Second.mp4"))
+    add(app, LINK)
+    app.cancel_button.invoke()
+    wait_until_done(app)
+    folder = shown_folder(first.parent)
+    assert app.status.get() == (
+        f"Cancelled. Kept the 2 videos already finished (in {folder})."
+    )
+    assert rows(app)[0][2] == "Cancelled"
+    app.play_button.invoke()
+    assert files.calls == [("play", first)]
+    # Like every cancelled download, not kept in the history.
+    assert load_history(app.history) == []
 
 
 def test_cancel_moves_on_to_the_next_link(app: App, fake: FakeDownload) -> None:
@@ -745,15 +770,34 @@ def test_done_message_names_the_folder_from_home() -> None:
     assert done_message(Done(path, True)) == (
         f"Already there, not downloaded again: Clip.mp4 (in {folder})"
     )
-    assert done_message(Done(path, False, playlist=True)) == (
-        f"Done: Clip.mp4 (in {folder}). {PLAYLIST_NOTE}"
-    )
     assert done_message(Done(path, True, no_subtitles=True)) == (
         f"Already there, not downloaded again: Clip.mp4 (in {folder}). {NO_SUBTITLES}"
     )
-    assert done_message(Done(path, False, playlist=True, no_subtitles=True)) == (
-        f"Done: Clip.mp4 (in {folder}). {NO_SUBTITLES} {PLAYLIST_NOTE}"
+
+
+def test_playlist_messages_count_the_videos() -> None:
+    first = Path.home() / "Downloads" / "Videos" / "My list" / "First.mp4"
+    folder = Path("Downloads") / "Videos" / "My list"
+
+    def message(playlist: Playlist, already_there: bool = False) -> str:
+        return done_message(Done(first, already_there, playlist=playlist))
+
+    assert message(Playlist(12, 12, 0)) == f"Done: 12 of 12 videos saved (in {folder})."
+    assert message(Playlist(12, 10, 1, why=NOT_AVAILABLE)) == (
+        f"Done: 10 of 12 videos saved, 1 was already there, 1 failed (in {folder}). "
+        f"Why the first failed: {NOT_AVAILABLE}"
     )
+    assert message(Playlist(3, 1, 2, no_subtitles=2)) == (
+        f"Done: 1 of 3 videos saved, 2 were already there (in {folder}). "
+        "No English subtitles for 2 of the videos."
+    )
+    assert message(Playlist(2, 0, 2), already_there=True) == (
+        f"Already there, not downloaded again: 2 of 2 videos (in {folder})."
+    )
+    assert message(Playlist(3, 0, 2), already_there=True) == (
+        f"Already there, not downloaded again: 2 of 3 videos, 1 failed (in {folder})."
+    )
+    assert message(Playlist(1, 1, 0)) == f"Done: 1 of 1 video saved (in {folder})."
 
 
 def test_enter_is_bound_on_the_link_box(app: App) -> None:

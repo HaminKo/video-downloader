@@ -21,6 +21,7 @@ import popup
 from drive import (
     LINK,
     LINK2,
+    PLAYLIST_LINK,
     PROGRESS,
     SCREENSHOT_DIR,
     FakeDownload,
@@ -82,6 +83,17 @@ def queued(app: App, fake: FakeDownload) -> None:
     press(app.link_entry, "Return")
 
 
+def playlist(app: App, fake: FakeDownload) -> None:
+    """A playlist downloaded below a single video: one row, its status line
+    counting what became of its videos, with the first failure's reason."""
+    done(app, fake)
+    type_text(app.link_entry, PLAYLIST_LINK)
+    press(app.link_entry, "Return")
+    wait_until(app, lambda: app.status.get().startswith("Video 1 of 3"), "progress")
+    fake.finish()
+    wait_until(app, lambda: not app.busy, "the playlist to end")
+
+
 def with_history(app: App, fake: FakeDownload) -> None:
     """Opened with past downloads in the history (PAST), then a link typed:
     it downloads below them, in view."""
@@ -104,6 +116,7 @@ SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "error": failed,
     "cancelled": cancelled,
     "queue": queued,
+    "playlist": playlist,
     "history": with_history,
     "received": received,
 }
