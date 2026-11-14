@@ -1,0 +1,216 @@
+"""The Chrome button: its helper (host.py), its setup (browser.py) and the
+extension's ID. Never the registry (tests/conftest.py fakes it) and never a
+real Chrome."""
+
+import base64
+import hashlib
+import io
+import json
+import os
+import queue
+import subprocess
+import sys
+from collections.abc import Callable
+from pathlib import Path
+
+import pytest
+
+from video_downloader import browser, handoff, host
+from video_downloader.browser import EXTENSION_FOLDER, EXTENSION_ID, HOST_NAME
+from video_downloader.host import BAD_MESSAGE, LENGTH, NOT_A_WEB_PAGE
+
+LINK = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+OK = {"ok": True}
+
+
+def framed(message: object) -> bytes:
+    """A message as Chrome sends it: its length in 4 bytes, then the JSON."""
+    data = json.dumps(message).encode("utf-8")
+    return LENGTH.pack(len(data)) + data
+
+
+def serve(data: bytes, pipe: str, open_window: Callable[[str], None]) -> object:
+    """Run the helper with data as its stdin; its reply."""
+    stdout = io.BytesIO()
+    host.serve(io.BytesIO(data), stdout, pipe, open_window)
+    return host.read_message(io.BytesIO(stdout.getvalue()))
+
+
+def extension_id(key: str) -> str:
+    """The ID Chrome gives an extension with this manifest "key" (a public
+    key in base64): the first 32 hex digits of its SHA-256, with a-p for 0-f
+    (Chromium, components/crx_file/id_util.cc)."""
+    digest = hashlib.sha256(base64.b64decode(key)).hexdigest()[:32]
+    return "".join(chr(ord("a") + int(digit, 16)) for digit in digest)
+
+
+def test_a_message_is_its_length_in_4_bytes_then_json() -> None:
+    stream = io.BytesIO()
+    host.write_message(stream, {"link": "a"})
+    assert stream.getvalue() == b'\x0d\x00\x00\x00{"link": "a"}'
+    assert host.read_message(io.BytesIO(stream.getvalue())) == {"link": "a"}
+
+
+def test_a_link_goes_to_the_open_window(pipe: str) -> None:
+    links: queue.Queue[str] = queue.Queue()
+    listening = handoff.listen(links.put, pipe)
+    assert listening is not None
+    opened: list[str] = []
+    try:
+        assert serve(framed({"link": LINK}), pipe, opened.append) == OK
+        assert links.get(timeout=5) == LINK
+    finally:
+        listening.close()
+    assert opened == []
+
+
+def test_with_no_window_open_one_opens_with_the_link(pipe: str) -> None:
+    opened: list[str] = []
+    assert serve(framed({"link": f" {LINK} "}), pipe, opened.append) == OK
+    assert opened == [LINK]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"link": "chrome://newtab/"},
+        {"link": "file:///C:/Users/Public/clip.mp4"},
+        {"link": ""},
+        {"link": 5},
+        {},
+        [LINK],
+    ],
+)
+def test_only_a_web_page_is_sent(message: object, pipe: str) -> None:
+    opened: list[str] = []
+    reply = serve(framed(message), pipe, opened.append)
+    assert reply == {"ok": False, "error": NOT_A_WEB_PAGE}
+    assert opened == []
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"",  # nothing at all
+        b"\x05\x00",  # half a length
+        LENGTH.pack(100) + b'{"link"',  # shorter than it says
+        LENGTH.pack(handoff.LONGEST + 1) + b"{}",  # longer than a link can be
+        LENGTH.pack(5) + b"hello",  # not JSON
+        LENGTH.pack(2) + b"\xff\xfe",  # not UTF-8
+    ],
+)
+def test_a_broken_message_gets_an_error(data: bytes, pipe: str) -> None:
+    opened: list[str] = []
+    assert serve(data, pipe, opened.append) == {"ok": False, "error": BAD_MESSAGE}
+    assert opened == []
+
+
+def test_a_window_that_cant_open_gets_an_error(pipe: str) -> None:
+    def cant_open(link: str) -> None:
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+
+    reply = serve(framed({"link": LINK}), pipe, cant_open)
+    assert isinstance(reply, dict)
+    assert reply["ok"] is False
+    assert "window couldn't be opened" in reply["error"]
+
+
+def test_the_window_gets_a_fresh_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not Chrome's PATH, which may be days old (no ffmpeg in it)."""
+    started: list[tuple[list[object], dict[str, object]]] = []
+    monkeypatch.setattr(
+        host.subprocess,
+        "Popen",
+        lambda command, **options: started.append((command, options)),
+    )
+    monkeypatch.setattr(host, "fresh_path", lambda: r"C:\Fresh")
+    host.start_window(LINK)
+    [(command, options)] = started
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    assert command == [pythonw, "-m", "video_downloader", LINK]
+    env = options["env"]
+    assert isinstance(env, dict)
+    assert env["PATH"] == r"C:\Fresh"
+    assert env["SYSTEMROOT"] == os.environ["SYSTEMROOT"]  # the rest stays
+    assert options["stdout"] == subprocess.DEVNULL
+
+
+def test_a_fresh_path_has_the_system_folders_spelled_out() -> None:
+    """Windows' own folder is in every PC's PATH, as %SystemRoot%\\system32."""
+    folders = [folder.lower() for folder in host.fresh_path().split(";")]
+    system32 = str(Path(os.environ["SYSTEMROOT"]) / "system32").lower()
+    assert system32 in folders
+    assert not any("%systemroot%" in folder for folder in folders)
+
+
+def test_install_writes_the_helper_and_points_chrome_at_it(
+    tmp_path: Path, registry: dict[str, Path]
+) -> None:
+    folder = tmp_path / "video-downloader"
+    browser.install(folder, Path(r"C:\Python Folder\python.exe"))
+    bat = folder / "host.bat"
+    expected = '@"C:\\Python Folder\\python.exe" -m video_downloader.host\n'
+    assert bat.read_text(encoding="oem") == expected
+    manifest = folder / "host.json"
+    assert json.loads(manifest.read_text(encoding="utf-8")) == {
+        "name": HOST_NAME,
+        "description": "Video Downloader: gets links from the Chrome button",
+        "path": str(bat),
+        "type": "stdio",
+        "allowed_origins": [f"chrome-extension://{EXTENSION_ID}/"],
+    }
+    assert registry == {"key": manifest}
+
+
+def test_uninstall_removes_only_the_helper(
+    tmp_path: Path, registry: dict[str, Path]
+) -> None:
+    browser.install(tmp_path, Path(sys.executable))
+    others = [tmp_path / "history.json", tmp_path / "cookies.txt"]
+    for file in others:
+        file.write_text("kept", encoding="utf-8")
+    browser.uninstall(tmp_path)
+    assert sorted(tmp_path.iterdir()) == sorted(others)
+    assert registry == {}
+    browser.uninstall(tmp_path)  # once more: nothing there, no error
+
+
+def test_install_says_what_to_do_in_chrome(capsys: pytest.CaptureFixture[str]) -> None:
+    browser.main(["install"])
+    out = capsys.readouterr().out
+    assert str(EXTENSION_FOLDER) in out
+    assert EXTENSION_ID in out
+    assert (browser.DATA_FOLDER / "host.json").exists()  # conftest's folder
+    browser.main(["uninstall"])
+    assert not (browser.DATA_FOLDER / "host.json").exists()
+
+
+def test_host_bat_answers_chrome_through_cmd(tmp_path: Path) -> None:
+    """Run host.bat the way Chrome does (through cmd.exe, with Chrome's
+    arguments): nothing but the reply may reach stdout, and both ways must
+    be binary. The message is 26 bytes long, Ctrl+Z, which ends a text-mode
+    read. Its page isn't a web page, so it never reaches a pipe."""
+    browser.install(tmp_path, Path(sys.executable))
+    base = len(json.dumps({"link": "chrome://"}))
+    message = {"link": "chrome://" + "a" * (26 - base)}
+    assert len(framed(message)) == 4 + 26
+    bat = tmp_path / "host.bat"
+    command = (
+        f'cmd.exe /d /s /c ""{bat}" chrome-extension://{EXTENSION_ID}/ '
+        '--parent-window=0"'
+    )
+    result = subprocess.run(
+        command, input=framed(message), capture_output=True, timeout=60
+    )
+    assert result.stdout == framed({"ok": False, "error": NOT_A_WEB_PAGE})
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_extension_matches_the_helper() -> None:
+    """Its key gives EXTENSION_ID, and it calls the helper by HOST_NAME."""
+    manifest = json.loads(
+        (EXTENSION_FOLDER / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert extension_id(manifest["key"]) == EXTENSION_ID
+    script = (EXTENSION_FOLDER / "background.js").read_text(encoding="utf-8")
+    assert f'const HOST = "{HOST_NAME}";' in script

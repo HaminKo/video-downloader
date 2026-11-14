@@ -1,9 +1,9 @@
 # To do
 
 ## Where we are
-- Now: To do 10, step B (Chrome button)
-- Next: To do 15 (GUI test on another screen, without taking the keyboard)
-- Updated: 2026-11-13
+- Now: To do 15 (GUI test on another screen, without taking the keyboard)
+- Next: none (Bugs me is empty)
+- Updated: 2026-11-14
 
 ## To do
 Next number: 16. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
@@ -11,12 +11,12 @@ Next number: 16. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- To do 10: Chrome button (large; user 2026-11-11, Chrome instead of Edge 2026-11-13): docs/todo/10-chrome-button.md
+- To do 15: GUI test on another screen, without taking the keyboard (small; user 2026-11-13): docs/todo/15-gui-test-focus.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
 
-- To do 15: GUI test on another screen, without taking the keyboard (small; user 2026-11-13): docs/todo/15-gui-test-focus.md
+- Nothing here now.
 
 ### Someday
 Everything else, unordered (grouped by area once it grows). A Someday to-do moves up only when it starts to bug the user.

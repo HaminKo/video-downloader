@@ -2,6 +2,15 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: The Chrome button sends only web pages and shows only failures; its helper is a module of its own that never imports yt-dlp
+- **Decision:** a click on a page that isn't a web page (New Tab, `chrome://`, a file from disk) sends nothing; the button shows a red "!" and its tooltip says why ("Only web pages can be sent.", "The helper isn't installed: ...", or Chrome's own message), until the next click that works. Nothing shows when it works: the app coming to the front is the sign. Icon: a white down arrow on a blue rounded square; name "Video Downloader". The helper Chrome starts is `host.py` (`python -m video_downloader.host`, through `host.bat`), apart from the setup in `browser.py`, and imports only `handoff`.
+- **Reason:** a `chrome://` link in the box could only fail later. The helper starts once per click; importing `downloader` (yt-dlp) would add 0.18-0.37 s to each (measured 2026-11-14), while setup runs once and may import it for `DATA_FOLDER`.
+- **Who decided:** the user, on Claude's suggestions (To do 10, step B); the module split by Claude in the plan the user agreed to.
+- **Rejected:**
+  - a sign in Chrome when it works (a short badge): the window coming to the front says it already
+  - the helper inside browser.py, as first planned: every click would load yt-dlp
+  - checking for web pages in the extension: the helper checks, so it's tested in Python with the rest
+
 ## 2026-11-13: The browser button is a Chrome extension (not Edge) that talks to the app through native messaging; the app gets the link through a named pipe
 - **Reason:** the user mostly uses Chrome, not Edge. An unpacked (self-made) extension in Chrome no longer brings a warning (Chromium removed it in 2023), gives a toolbar button with no prompts, and only this extension can start the app. Clicking it sends the tab's link to a small helper that Chrome starts; the helper hands the link to the open window through a Windows named pipe, or opens a window with the link. The window only fills in the link and comes to the front, with "Link received: choose MP4 or MP3, then Download." in the status line; a link already in the box is replaced. A fixed `key` in the extension's manifest keeps its ID the same, so `python -m video_downloader.browser install` can write the helper's files (in `%APPDATA%\video-downloader`) and Chrome's registry key by itself; `uninstall` removes them. Research: docs/research/browser-button.md.
 - **Who decided:** the user, on Claude's suggestions (To do 10).

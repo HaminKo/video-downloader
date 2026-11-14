@@ -1,6 +1,6 @@
 """Hand a link to the window that is open already: the window listens on a
-Windows named pipe, and `python -m video_downloader LINK` (later the Chrome
-button's helper) sends the link there.
+Windows named pipe, and `python -m video_downloader LINK` or the Chrome
+button's helper (host.py) sends the link there.
 
 A message is the link as UTF-8 text, nothing else. multiprocessing's send()
 and recv() are never used: they unpickle, which runs whatever the sender

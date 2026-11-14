@@ -6,9 +6,9 @@ Links wait in the list and download one after another. The bar, the status
 line and the buttons under them are about the selected row. The list starts
 with the past downloads from the history file.
 
-A link sent from outside (`python -m video_downloader LINK`, later the Chrome
-button) goes into the link box of the window that is open already, through a
-named pipe (handoff.py); it doesn't start by itself."""
+A link sent from outside (`python -m video_downloader LINK`, or the Chrome
+button's helper, host.py) goes into the link box of the window that is open
+already, through a named pipe (handoff.py); it doesn't start by itself."""
 
 import argparse
 import json

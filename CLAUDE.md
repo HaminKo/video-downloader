@@ -19,7 +19,7 @@ Don't build what's under "Later" in docs/todo.md until asked. Never: anything th
 Read by the /build-todo skill. Times measured 2026-11-10 (To do 1).
 - **Checks** (from the project folder, `.venv` active):
   - After each edit (fast): `ruff check .` and `ruff format .` (0.1 s together).
-  - Once per step (slow): `pytest` (9 to 14 s; tests never touch the internet, the download tests fetch a clip from a web server they start on this PC and need ffmpeg), the GUI test `pytest tests/gui/window_gui.py` (about 12 s; a fake download stands in for yt-dlp) and `pyright` (1-2 s). Times measured 2026-11-12 (To do 7).
+  - Once per step (slow): `pytest` (25 to 37 s; tests never touch the internet, the download tests fetch a clip from a web server they start on this PC and need ffmpeg), the GUI test `pytest tests/gui/window_gui.py` (about 30 s; a fake download stands in for yt-dlp) and `pyright` (1-2 s). Times measured 2026-11-14 (To do 10; 9 to 14 s and 12 s on 2026-11-12, the slowest tests are the download tests).
   - pytest runs with `--capture=sys` (set in pyproject.toml): the default breaks a second tkinter window (docs/research/tkinter-tests.md).
   - The GUI test opens the real window on top and takes the keyboard focus; real keys and clicks in it are ignored meanwhile. A UI change gets a step in it (tests/gui/window_gui.py; helpers in tests/gui/drive.py). How it works: docs/research/gui-testing.md.
   - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done, error, cancelled, queue, history, received). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 420 tokens each (estimate from the size, 903 × 350 px measured 2026-11-12). A new screen gets an entry in `SCREENS` in that file.
@@ -34,6 +34,7 @@ Now and next: the "Where we are" block at the top of docs/todo.md.
 One line per decision to follow; reasons, who decided and what was rejected: docs/decisions.md.
 - Build on yt-dlp as a Python library; never write our own site downloaders. Desktop window first, a Chrome button later.
 - Chrome button: an unpacked extension + native messaging (Chrome's HKCU key, written by `python -m video_downloader.browser install`); links reach the open window through a named pipe as plain text (`send_bytes`, never pickle); a link only fills in the box.
+- Chrome's helper is `host.py` and imports only `handoff`, never yt-dlp (it starts on every click); only web pages are sent; the button shows only failures (a red "!", why in its tooltip).
 - Python 3.13 with tkinter for the window.
 - Deno (yt-dlp's default) is the JavaScript runtime for YouTube, not Node.
 - Reddit needs signing in (it blocks anyone not signed in); curl_cffi was tried and doesn't help.

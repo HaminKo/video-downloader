@@ -14,6 +14,7 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, i
 - Files go to the **Videos** folder inside your Downloads folder: MP4s that play everywhere (H.264 video with AAC sound), or MP3s.
 - Click a row in the list to see its progress or message. **Play** and **Show in folder** open its file, **Remove** takes it out of the list (never deletes a file), and **Cancel** stops the running download.
 - When a download fails, the window says why in plain words. Reddit needs a sign-in file: see [Signing in](docs/signing-in.md).
+- A button in Chrome sends the page you're on to the app with one click: see [The Chrome button](docs/using.md#the-chrome-button).
 
 Everything in detail: [Using the app](docs/using.md).
 
@@ -38,6 +39,7 @@ Needs Windows, Python 3.13 or newer, [ffmpeg](https://ffmpeg.org) and [Deno](htt
    python -m video_downloader
    ```
    With a link after it (`python -m video_downloader LINK`), the link goes into the box of the window that is open, or a new window opens with it.
+4. Optional, the Chrome button: run `python -m video_downloader.browser install`, then load the project's `extension` folder in Chrome. Step by step: [The Chrome button](docs/using.md#the-chrome-button).
 
 To check that yt-dlp finds ffmpeg and Deno, run `yt-dlp -v`: the `exe versions` line should list ffmpeg and the `JS runtimes` line deno. It ends with "You must provide at least one URL", which is expected.
 
@@ -57,4 +59,4 @@ GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 sec
 - [Deno](https://deno.com) by the Deno authors, MIT: the JavaScript runtime yt-dlp needs for YouTube.
 - [Get cookies.txt LOCALLY](https://github.com/kairi003/Get-cookies.txt-LOCALLY) by kairi003, MIT: a browser extension, not part of the app, for exporting Reddit's sign-in ([Signing in](docs/signing-in.md)).
 - [Python](https://www.python.org) and tkinter by the Python Software Foundation, PSF License (tkinter uses [Tcl/Tk](https://www.tcl-lang.org), BSD-style license): the app and its window.
-- Development tools: [ruff](https://github.com/astral-sh/ruff) by Astral (MIT), [pyright](https://github.com/microsoft/pyright) by Microsoft (MIT), [pytest](https://pytest.org) by the pytest-dev team (MIT), [Pillow](https://python-pillow.github.io) by Jeffrey A. Clark and contributors (MIT-CMU, screenshots for the GUI test), [hatchling](https://github.com/pypa/hatch) by the Python Packaging Authority (MIT, builds the package for the install).
+- Development tools: [ruff](https://github.com/astral-sh/ruff) by Astral (MIT), [pyright](https://github.com/microsoft/pyright) by Microsoft (MIT), [pytest](https://pytest.org) by the pytest-dev team (MIT), [Pillow](https://python-pillow.github.io) by Jeffrey A. Clark and contributors (MIT-CMU, screenshots for the GUI test; drew the Chrome button's icons), [hatchling](https://github.com/pypa/hatch) by the Python Packaging Authority (MIT, builds the package for the install).
