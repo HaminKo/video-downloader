@@ -22,7 +22,7 @@ Read by the /build-todo skill. Times measured 2026-11-10 (To do 1).
   - Once per step (slow): `pytest` (9 to 14 s; tests never touch the internet, the download tests fetch a clip from a web server they start on this PC and need ffmpeg), the GUI test `pytest tests/gui/window_gui.py` (about 12 s; a fake download stands in for yt-dlp) and `pyright` (1-2 s). Times measured 2026-11-12 (To do 7).
   - pytest runs with `--capture=sys` (set in pyproject.toml): the default breaks a second tkinter window (docs/research/tkinter-tests.md).
   - The GUI test opens the real window on top and takes the keyboard focus; real keys and clicks in it are ignored meanwhile. A UI change gets a step in it (tests/gui/window_gui.py; helpers in tests/gui/drive.py). How it works: docs/research/gui-testing.md.
-  - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done, error, cancelled, queue, history). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 420 tokens each (estimate from the size, 903 × 350 px measured 2026-11-12). A new screen gets an entry in `SCREENS` in that file.
+  - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done, error, cancelled, queue, history, received). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 420 tokens each (estimate from the size, 903 × 350 px measured 2026-11-12). A new screen gets an entry in `SCREENS` in that file.
 - **Docs to update when behaviour changes:** README.md (headline features, install and run steps, Credits), docs/using.md (how each part of the window works) and any help text in the app. When a README section grows past about a screen, move it into docs/NAME.md and link it from the README.
 - **Must keep working:** Enter in the link box and the Download button both start a download (checked by the GUI test).
 - **Review checklist:** none yet: the built-in code-review skill. Add docs/review.md once the project has its own rules to check.
@@ -32,7 +32,8 @@ Now and next: the "Where we are" block at the top of docs/todo.md.
 
 ## Decisions
 One line per decision to follow; reasons, who decided and what was rejected: docs/decisions.md.
-- Build on yt-dlp as a Python library; never write our own site downloaders. Desktop window first, Edge button later.
+- Build on yt-dlp as a Python library; never write our own site downloaders. Desktop window first, a Chrome button later.
+- Chrome button: an unpacked extension + native messaging (Chrome's HKCU key, written by `python -m video_downloader.browser install`); links reach the open window through a named pipe as plain text (`send_bytes`, never pickle); a link only fills in the box.
 - Python 3.13 with tkinter for the window.
 - Deno (yt-dlp's default) is the JavaScript runtime for YouTube, not Node.
 - Reddit needs signing in (it blocks anyone not signed in); curl_cffi was tried and doesn't help.

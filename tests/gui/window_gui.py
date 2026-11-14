@@ -30,9 +30,11 @@ from drive import (
     write_history,
 )
 
+from video_downloader import handoff
 from video_downloader.app import (
     CANCELLED,
     FAILED_COLOR,
+    LINK_RECEIVED,
     PASTE_A_LINK,
     TITLE,
     WAITING,
@@ -60,10 +62,16 @@ def files() -> FakeFiles:
 
 @pytest.fixture(params=list(SIZES.values()), ids=list(SIZES))
 def app(
-    request: pytest.FixtureRequest, fake: FakeDownload, files: FakeFiles, tmp_path: Path
+    request: pytest.FixtureRequest,
+    fake: FakeDownload,
+    files: FakeFiles,
+    tmp_path: Path,
+    pipe: str,
 ) -> Iterator[App]:
     history = tmp_path / "history.json"
-    app = open_window(fake, history, request.param, folder=tmp_path, files=files)
+    app = open_window(
+        fake, history, request.param, folder=tmp_path, files=files, pipe=pipe
+    )
     try:
         yield app
     finally:
@@ -93,6 +101,23 @@ def test_enter_in_link_box_starts_download(app: App, fake: FakeDownload) -> None
     wait_for_progress(app, "Enter in the link box")
     assert fake.calls == [(LINK, Kind.MP4, app.folder, None, False)]
     assert app.link.get() == "", "the box empties for the next link"
+    finish(app, fake)
+
+
+def test_a_sent_link_fills_the_box_and_enter_starts_it(
+    app: App, fake: FakeDownload, pipe: str
+) -> None:
+    type_text(app.link_entry, "half")
+    app.root.iconify()  # it comes back from the taskbar too
+    app.root.update()
+    assert handoff.send(LINK2, pipe), "the window listens on its pipe"
+    wait_until(app, lambda: app.link.get() == LINK2, "the sent link in the box")
+    assert app.root.state() == "normal", "the window is shown again"
+    assert app.status.get() == LINK_RECEIVED
+    assert fake.calls == [], "it waits for Download"
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "Enter after a sent link")
+    assert fake.calls == [(LINK2, Kind.MP4, app.folder, None, False)]
     finish(app, fake)
 
 

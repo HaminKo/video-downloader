@@ -2,6 +2,17 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-13: The browser button is a Chrome extension (not Edge) that talks to the app through native messaging; the app gets the link through a named pipe
+- **Reason:** the user mostly uses Chrome, not Edge. An unpacked (self-made) extension in Chrome no longer brings a warning (Chromium removed it in 2023), gives a toolbar button with no prompts, and only this extension can start the app. Clicking it sends the tab's link to a small helper that Chrome starts; the helper hands the link to the open window through a Windows named pipe, or opens a window with the link. The window only fills in the link and comes to the front, with "Link received: choose MP4 or MP3, then Download." in the status line; a link already in the box is replaced. A fixed `key` in the extension's manifest keeps its ID the same, so `python -m video_downloader.browser install` can write the helper's files (in `%APPDATA%\video-downloader`) and Chrome's registry key by itself; `uninstall` removes them. Research: docs/research/browser-button.md.
+- **Who decided:** the user, on Claude's suggestions (To do 10).
+- **Rejected:**
+  - Edge (the to-do's first target): the user doesn't use it much, and Edge shows a developer-mode warning for an unpacked extension that can't be turned off. Edge reads Chrome's registry key too, so it would work if ever loaded there.
+  - a bookmarks-bar button opening a link type of our own (`video-downloader:`), no extension: fewer parts and works in every browser, but Chrome asks once per site, and its bookmarks bar shows only on the New Tab page unless turned on
+  - starting the download at once: MP4 or MP3 and the quality are still chosen in the window
+  - a localhost port for the hand-over: any web page could send to it; a named pipe can't be reached from a web page
+  - `multiprocessing.connection`'s `send`/`recv`: they unpickle, which runs whatever a sender packs in; `send_bytes`/`recv_bytes` carry plain text
+  - publishing the extension to a store: an account and a review for a one-person tool
+
 ## 2026-11-13: A history: the list starts with past downloads that saved a file, kept in `%APPDATA%\video-downloader\history.json`
 - **Reason:** the user wanted to see what was downloaded before. The list of downloads (To do 9, step A) already shows a finished download with its file, Play and Show in folder, so past downloads are rows in it too, above this session's, the same look; the list opens scrolled to the newest, nothing selected. Only rows with a saved file are kept (Done, Already there), the newest 200: failed and cancelled ones have nothing to open. Each save writes the whole list's saved rows anew (after each saved file, and after Remove of one), so Remove and the limit need no code of their own; the text goes into `history.json.new` first, which then replaces the file, so a save that stops halfway leaves the old one. The file sits next to `cookies.txt` (the app's own data folder; `cookies.txt` is still only read). Each entry holds the link, choices, title, state, the status line's message and the file's path.
 - **Who decided:** the user, on Claude's suggestions (To do 9, step B).

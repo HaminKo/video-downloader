@@ -24,6 +24,7 @@ The search found nothing on extensions. Everything in this section is general kn
 - Most sites stream video in small chunks (HLS/DASH), often with video and audio separate. An extension alone can't join them well, so the known downloader extensions (for example Video DownloadHelper) need a companion program on the PC.
 - Chrome Web Store policy bars extensions that download YouTube videos; Edge's store is thought to be similar. This doesn't matter for a personal extension loaded unpacked.
 - An extension talks to a program on the PC through **native messaging**: a small JSON manifest plus a registry key (for Edge under `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\`) that names the extension's ID. The other way, a local web server on localhost, is simpler but any web page could call it unless it's protected with a secret token.
+  - Checked 2026-11-13 (To do 10): right, from Chrome's and Microsoft's docs (Chrome's key is `HKCU\Software\Google\Chrome\NativeMessagingHosts\`). Also found: an unpacked extension makes Edge show a developer-mode warning that can't be turned off; Chrome dropped its own in 2023. Details and a second way (a bookmarks-bar button opening a link type of our own): [browser-button.md](browser-button.md).
 
 ## What we reuse
 - yt-dlp as a Python library (its `YoutubeDL` class with progress hooks), plus ffmpeg and Deno as separate programs.

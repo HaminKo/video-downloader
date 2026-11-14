@@ -196,6 +196,7 @@ def open_window(
     width: int | None = None,
     folder: Path | None = None,
     files: FakeFiles | None = None,
+    pipe: str | None = None,
 ) -> App:
     """Start the window as main() does, on top, with the link box focused.
 
@@ -206,8 +207,10 @@ def open_window(
     folder: where the window says files go; None: the real Downloads\\Videos,
     which the fakes never write to.
     files: the fake that stands in for opening files (default: a new one).
+    pipe: the named pipe it listens on for links sent from outside; None:
+    it doesn't listen. Never handoff.PIPE, or a real link could reach it.
     """
-    app = start(download, folder, files or FakeFiles(), history)
+    app = start(download, folder, files or FakeFiles(), history, pipe)
     root = app.root
     try:
         root.attributes("-topmost", True)

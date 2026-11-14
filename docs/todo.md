@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: To do 10 (Edge button)
+- Now: To do 10, step B (Chrome button)
 - Next: none (Bugs me is empty)
 - Updated: 2026-11-13
 
@@ -11,7 +11,7 @@ Next number: 15. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- To do 10: Edge button (large; user 2026-11-11): docs/todo/10-edge-button.md
+- To do 10: Chrome button (large; user 2026-11-11, Chrome instead of Edge 2026-11-13): docs/todo/10-chrome-button.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.

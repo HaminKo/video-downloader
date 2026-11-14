@@ -37,6 +37,7 @@ Needs Windows, Python 3.13 or newer, [ffmpeg](https://ffmpeg.org) and [Deno](htt
    ```powershell
    python -m video_downloader
    ```
+   With a link after it (`python -m video_downloader LINK`), the link goes into the box of the window that is open, or a new window opens with it.
 
 To check that yt-dlp finds ffmpeg and Deno, run `yt-dlp -v`: the `exe versions` line should list ffmpeg and the `JS runtimes` line deno. It ends with "You must provide at least one URL", which is expected.
 

@@ -4,8 +4,13 @@ line, and Play, Show in folder and Remove buttons.
 
 Links wait in the list and download one after another. The bar, the status
 line and the buttons under them are about the selected row. The list starts
-with the past downloads from the history file."""
+with the past downloads from the history file.
 
+A link sent from outside (`python -m video_downloader LINK`, later the Chrome
+button) goes into the link box of the window that is open already, through a
+named pipe (handoff.py); it doesn't start by itself."""
+
+import argparse
 import json
 import os
 import queue
@@ -20,7 +25,7 @@ from enum import StrEnum
 from pathlib import Path
 from tkinter import font, ttk
 
-from video_downloader import downloader
+from video_downloader import downloader, handoff
 from video_downloader.downloader import (
     Cancelled,
     Done,
@@ -44,6 +49,7 @@ PLAYLIST_NOTE = (
 )
 NO_SUBTITLES = "No English subtitles found."
 GONE = "Can't play {name}: it isn't in {folder} anymore."
+LINK_RECEIVED = "Link received: choose MP4 or MP3, then Download."
 
 # The video quality choices and their limit as the downloader takes it (720
 # for 720p). "Best" (None) is the best that plays everywhere: 1080p on
@@ -58,7 +64,8 @@ FAILED_COLOR = "#a00000"
 # 100% display scaling (96 DPI). window_width() scales it to the display.
 WIDTH = 600
 
-# How often the window checks for news from the download, in milliseconds.
+# How often the window checks for news from the download, and for links sent
+# from outside, in milliseconds.
 CHECK_EVERY = 100
 
 # How many rows the list of downloads shows; it scrolls for more.
@@ -164,6 +171,8 @@ class App:
     files: what opens the downloaded file or its folder (the tests pass a fake).
     history: the file of past downloads (default: HISTORY; the tests pass one
     in a temporary folder).
+    pipe: the named pipe to listen on for links sent from outside (main()
+    passes handoff.PIPE; tests pass one of their own). None: don't listen.
     """
 
     def __init__(
@@ -173,6 +182,7 @@ class App:
         folder: Path | None = None,
         files: Files | None = None,
         history: Path | None = None,
+        pipe: str | None = None,
     ) -> None:
         self.root = root
         self.run_download = download
@@ -186,6 +196,9 @@ class App:
         self.events: queue.Queue[Event] = queue.Queue()
         self.next_check = ""  # the scheduled check_events(), while busy
         self.next_fit = ""  # the scheduled fit_height()
+        self.links: queue.Queue[str] = queue.Queue()  # sent from outside
+        self.next_link_check = ""  # the scheduled check_links()
+        self.listening: handoff.Listening | None = None
 
         root.title(TITLE)
         root.minsize(window_width(root), 0)
@@ -325,6 +338,12 @@ class App:
         self.link_entry.focus_set()
         self.link_entry.bind("<Return>", lambda _event: self.start_download())
         root.bind("<Destroy>", self.on_destroy)
+
+        # Not when another window listens already: that one gets the links.
+        if pipe is not None:
+            self.listening = handoff.listen(self.links.put, pipe)
+            if self.listening is not None:
+                self.check_links()
 
     @property
     def busy(self) -> bool:
@@ -467,6 +486,26 @@ class App:
         if self.busy and not self.next_check:
             self.next_check = self.root.after(CHECK_EVERY, self.check_events)
 
+    def check_links(self) -> None:
+        """Take the newest link sent from outside since the last check (the
+        box holds one), and check again soon."""
+        link = ""
+        while not self.links.empty():
+            link = self.links.get()
+        if link:
+            self.receive_link(link)
+        self.next_link_check = self.root.after(CHECK_EVERY, self.check_links)
+
+    def receive_link(self, link: str) -> None:
+        """Put a link sent from outside in the box, replacing what is there,
+        and bring the window to the front. It doesn't start: MP4 or MP3 is
+        still chosen here. The hint stays until the selected row reports."""
+        self.link.set(link)
+        self.link_entry.icursor("end")
+        self.show_status(LINK_RECEIVED)
+        bring_to_front(self.root)
+        self.link_entry.focus_set()
+
     def selected(self) -> str:
         """The selected row, or "" when none is."""
         rows = self.downloads.selection()
@@ -556,10 +595,13 @@ class App:
     def on_destroy(self, event: tk.Event) -> None:
         # Drop what is still scheduled, or it runs later without its window
         # (only the tests open a second window).
+        # Stop listening, so a window opened later can listen on the pipe.
         if event.widget is self.root:
-            for scheduled in (self.next_check, self.next_fit):
+            for scheduled in (self.next_check, self.next_fit, self.next_link_check):
                 if scheduled:
                     self.root.after_cancel(scheduled)
+            if self.listening is not None:
+                self.listening.close()
 
     def wrap_status(self, event: tk.Event) -> None:
         """Wrap the status line at its width, which follows the window's."""
@@ -724,21 +766,53 @@ def window_width(root: tk.Misc) -> int:
     return round(WIDTH * root.winfo_fpixels("1i") / 96)
 
 
+def bring_to_front(root: tk.Tk) -> None:
+    """Show the window in front of the others, also when it was minimized,
+    and give it the keyboard focus. Windows may refuse the focus (it flashes
+    the taskbar button then), so being in front doesn't rely on it."""
+    root.deiconify()
+    on_top = bool(root.attributes("-topmost"))  # the GUI test's window is
+    root.attributes("-topmost", True)
+    root.attributes("-topmost", on_top)
+    root.focus_force()
+
+
 def start(
     download: Download = downloader.download,
     folder: Path | None = None,
     files: Files | None = None,
     history: Path | None = None,
+    pipe: str | None = None,
+    link: str = "",
 ) -> App:
     """Build the window as the user sees it; the GUI test starts it this way
-    too. The parameters are App's."""
+    too. The parameters are App's, and link: put in the box at the start."""
     if sys.platform == "win32":
         # Without this, Windows scales the window up and the text looks blurry.
         import ctypes
 
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    return App(tk.Tk(), download, folder, files, history)
+    app = App(tk.Tk(), download, folder, files, history, pipe)
+    if link:
+        app.receive_link(link)
+    return app
 
 
-def main() -> None:
-    start().root.mainloop()
+def main(arguments: list[str] | None = None) -> None:
+    """Open the window. With a link: hand it to the window that is open
+    already, or open one with the link in the box. arguments: the command
+    line's (default: sys.argv's)."""
+    parser = argparse.ArgumentParser(
+        prog="python -m video_downloader",
+        description="Download a video as MP4 or MP3.",
+    )
+    parser.add_argument(
+        "link",
+        nargs="?",
+        default="",
+        help="put this link in the box (of the window that is open, if one is)",
+    )
+    link = parser.parse_args(arguments).link.strip()
+    if link and handoff.send(link, handoff.PIPE):
+        return
+    start(pipe=handoff.PIPE, link=link).root.mainloop()

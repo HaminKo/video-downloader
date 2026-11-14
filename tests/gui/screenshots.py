@@ -81,6 +81,13 @@ def with_history(app: App, fake: FakeDownload) -> None:
     downloading(app, fake)
 
 
+def received(app: App, fake: FakeDownload) -> None:
+    """A link sent from outside (python -m video_downloader LINK): in the box,
+    the hint under the list."""
+    app.receive_link(LINK)
+    app.root.update()
+
+
 SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "start": opened,
     "progress": downloading,
@@ -89,6 +96,7 @@ SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "cancelled": cancelled,
     "queue": queued,
     "history": with_history,
+    "received": received,
 }
 
 # The screens whose window opens with past downloads; the others with none.

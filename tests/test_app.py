@@ -7,15 +7,18 @@ import tkinter as tk
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from video_downloader import handoff
 from video_downloader.app import (
     CANCELLED,
     CANCELLING,
     FAILED_COLOR,
     GONE,
     HISTORY_SIZE,
+    LINK_RECEIVED,
     LOOKING_UP,
     NO_END,
     NO_SUBTITLES,
@@ -31,9 +34,11 @@ from video_downloader.app import (
     State,
     done_message,
     load_history,
+    main,
     save_history,
     show_command,
     shown_folder,
+    start,
     window_width,
 )
 from video_downloader.downloader import (
@@ -748,3 +753,109 @@ def test_enter_is_bound_on_the_link_box(app: App) -> None:
     assert not app.root.bind("<Return>")
     assert app.downloads.bind("<Delete>")  # Remove
     assert app.downloads.bind("<Double-Button-1>")  # Play
+
+
+@pytest.fixture
+def to_front(monkeypatch: pytest.MonkeyPatch) -> list[tk.Tk]:
+    """Record bring_to_front() instead of showing the hidden window (the GUI
+    test brings the real one to the front)."""
+    calls: list[tk.Tk] = []
+    monkeypatch.setattr("video_downloader.app.bring_to_front", calls.append)
+    return calls
+
+
+def test_a_received_link_replaces_the_box_and_waits(
+    app: App, fake: FakeDownload, to_front: list[tk.Tk]
+) -> None:
+    assert app.listening is None, "no pipe given: it doesn't listen"
+    app.link.set("half a typed link")
+    app.receive_link(LINK)
+    assert app.link.get() == LINK
+    assert app.status.get() == LINK_RECEIVED
+    assert to_front == [app.root]
+    app.root.update()
+    assert fake.calls == [], "it waits for Download: MP4 or MP3 is chosen first"
+    assert not app.busy
+
+
+def test_a_link_sent_to_the_pipe_reaches_the_window(
+    fake: FakeDownload,
+    files: FakeFiles,
+    tmp_path: Path,
+    pipe: str,
+    to_front: list[tk.Tk],
+) -> None:
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        window = App(root, fake, tmp_path, files, pipe=pipe)
+        assert window.listening is not None
+        assert handoff.send(LINK, pipe)
+        deadline = time.monotonic() + 5
+        while window.link.get() != LINK:
+            assert time.monotonic() < deadline, "the link never arrived"
+            root.update()
+            time.sleep(0.01)
+        assert window.status.get() == LINK_RECEIVED
+        assert to_front == [root]
+    finally:
+        root.destroy()
+    assert not handoff.send(LINK, pipe), "a closed window stops listening"
+
+
+def test_start_puts_a_link_in_the_box(
+    fake: FakeDownload, files: FakeFiles, tmp_path: Path, to_front: list[tk.Tk]
+) -> None:
+    window = start(fake, tmp_path, files, tmp_path / "history.json", link=LINK)
+    try:
+        assert window.link.get() == LINK
+        assert window.status.get() == LINK_RECEIVED
+    finally:
+        window.root.destroy()
+
+
+@pytest.fixture
+def opened(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """Record the windows main() opens instead of opening them."""
+    calls: list[dict[str, object]] = []
+
+    def fake_start(**choices: object) -> SimpleNamespace:
+        calls.append(choices)
+        return SimpleNamespace(root=SimpleNamespace(mainloop=lambda: None))
+
+    monkeypatch.setattr("video_downloader.app.start", fake_start)
+    return calls
+
+
+def test_main_hands_a_link_to_the_open_window(
+    monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
+) -> None:
+    sent: list[tuple[str, str]] = []
+
+    def fake_send(link: str, pipe: str) -> bool:
+        sent.append((link, pipe))
+        return True
+
+    monkeypatch.setattr(handoff, "send", fake_send)
+    main([f" {LINK} "])
+    assert sent == [(LINK, handoff.PIPE)]
+    assert opened == [], "no second window"
+
+
+def test_main_opens_a_window_with_the_link_when_none_is_open(
+    opened: list[dict[str, object]],
+) -> None:
+    # handoff.PIPE is the test's own (conftest.py): no window listens there.
+    main([LINK])
+    assert opened == [{"pipe": handoff.PIPE, "link": LINK}]
+
+
+def test_main_without_a_link_opens_an_empty_window(
+    monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
+) -> None:
+    def fake_send(link: str, pipe: str) -> bool:
+        raise AssertionError("nothing to send")
+
+    monkeypatch.setattr(handoff, "send", fake_send)
+    main([])
+    assert opened == [{"pipe": handoff.PIPE, "link": ""}]
