@@ -1,9 +1,10 @@
 """The Chrome button's helper (the button: extension/). Chrome starts it for
 each click, through the host.bat that `python -m video_downloader.browser
-install` writes, as `python -m video_downloader.host`. It reads the one
-message the button sends, {"link": "https://..."} or with the choices to
-download it with, {"link": ..., "start": {"kind": "mp3", "quality": "Best",
-"subtitles": false}} (handoff.py checks them). It hands both to the open
+install` writes, as `python -m video_downloader.host` (in the built app:
+chrome-helper.exe, places.py). It reads the one message the button sends,
+{"link": "https://..."} or with the choices to download it with,
+{"link": ..., "start": {"kind": "mp3", "quality": "Best", "subtitles":
+false}} (handoff.py checks them). It hands both to the open
 window (handoff.py) or opens a window with them, and replies {"ok": true} or
 {"ok": false, "error": "..."}; the button shows the error. The popup's
 Cancel sends {"link": ..., "cancel": true}: the helper asks the open window
@@ -13,7 +14,7 @@ open, it opens none.
 Native messaging: a message is UTF-8 JSON after its length in 4 bytes (this
 PC's byte order), on stdin and stdout, which Python opens in binary mode on
 Windows (docs/research/browser-button.md). This module imports nothing slow
-(not yt-dlp), so a click gets its answer quickly.
+(only handoff and places, never yt-dlp), so a click gets its answer quickly.
 """
 
 import json
@@ -23,10 +24,9 @@ import subprocess
 import sys
 import winreg
 from collections.abc import Callable
-from pathlib import Path
 from typing import BinaryIO
 
-from video_downloader import handoff
+from video_downloader import handoff, places
 
 NOT_A_WEB_PAGE = "Only web pages can be sent."
 BAD_MESSAGE = "The helper couldn't read the message from Chrome."
@@ -122,12 +122,11 @@ def window_arguments(link: str, start: handoff.Choices | None) -> list[str]:
 
 def start_window(link: str, start: handoff.Choices | None) -> None:
     """Start the app with the link in its box, or downloading it with the
-    choices (window_arguments), without a console, with a fresh PATH
-    (fresh_path). It gets none of Chrome's pipes (DEVNULL), so it lives on
-    after this helper and after Chrome."""
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    choices (window_arguments), without a console (places.app_command), with
+    a fresh PATH (fresh_path). It gets none of Chrome's pipes (DEVNULL), so
+    it lives on after this helper and after Chrome."""
     subprocess.Popen(
-        [pythonw, "-m", "video_downloader", *window_arguments(link, start)],
+        [*places.app_command(), *window_arguments(link, start)],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -179,5 +178,10 @@ def serve(
     write_message(stdout, reply)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """One message from the Chrome button on stdin, one reply on stdout."""
     serve(sys.stdin.buffer, sys.stdout.buffer, handoff.PIPE)
+
+
+if __name__ == "__main__":
+    main()

@@ -17,6 +17,7 @@ import sys
 import winreg
 from pathlib import Path
 
+from video_downloader import places
 from video_downloader.downloader import DATA_FOLDER
 
 # Chrome's name for the helper; extension/popup.js uses it too.
@@ -30,8 +31,9 @@ EXTENSION_ID = "ihppdkclbgnohioighdlmologiiggoah"
 # Where Chrome looks up a helper's manifest (under HKEY_CURRENT_USER).
 KEY = rf"Software\Google\Chrome\NativeMessagingHosts\{HOST_NAME}"
 
-# The extension's folder, for "Load unpacked": next to src/ in the project.
-EXTENSION_FOLDER = Path(__file__).resolve().parents[2] / "extension"
+# The extension's folder, for "Load unpacked": next to src/ in the project,
+# next to the .exe files in the built app.
+EXTENSION_FOLDER = places.extension_folder()
 
 BAT = "host.bat"
 MANIFEST = "host.json"

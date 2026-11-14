@@ -51,6 +51,8 @@ With the `.venv` active: `ruff check .` and `ruff format .` (lint and formatting
 
 `pytest` needs ffmpeg: two tests download a 1-second clip from a small web server they start on this PC (never the internet).
 
+The app as .exe files: `python installer/build.py` updates yt-dlp, then builds the app into `dist\Video Downloader\` (start it with `Video Downloader.exe` there). `--no-update` leaves yt-dlp as it is.
+
 GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 seconds, types a link, presses Enter and clicks Download, and checks what the window shows; a fake download stands in for yt-dlp. Screenshots: `python tests/gui/screenshots.py` (or one screen by name, e.g. `done`) saves them to the temp folder and prints the paths. Both bring the window to the front and take the keyboard focus while they run; keys typed then are ignored. How they work: [docs/research/gui-testing.md](docs/research/gui-testing.md).
 
 ## Credits
@@ -60,4 +62,5 @@ GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 sec
 - [Deno](https://deno.com) by the Deno authors, MIT: the JavaScript runtime yt-dlp needs for YouTube.
 - [Get cookies.txt LOCALLY](https://github.com/kairi003/Get-cookies.txt-LOCALLY) by kairi003, MIT: a browser extension, not part of the app, for exporting Reddit's sign-in ([Signing in](docs/signing-in.md)).
 - [Python](https://www.python.org) and tkinter by the Python Software Foundation, PSF License (tkinter uses [Tcl/Tk](https://www.tcl-lang.org), BSD-style license): the app and its window.
-- Development tools: [ruff](https://github.com/astral-sh/ruff) by Astral (MIT), [pyright](https://github.com/microsoft/pyright) by Microsoft (MIT), [pytest](https://pytest.org) by the pytest-dev team (MIT), [Pillow](https://python-pillow.github.io) by Jeffrey A. Clark and contributors (MIT-CMU, screenshots for the GUI test; drew the Chrome button's icons), [hatchling](https://github.com/pypa/hatch) by the Python Packaging Authority (MIT, builds the package for the install).
+- [PyInstaller](https://pyinstaller.org) by the PyInstaller Development Team, GPL 2.0 with an exception for the programs it builds: builds the app's .exe files.
+- Development tools: [ruff](https://github.com/astral-sh/ruff) by Astral (MIT), [pyright](https://github.com/microsoft/pyright) by Microsoft (MIT), [pytest](https://pytest.org) by the pytest-dev team (MIT), [Pillow](https://python-pillow.github.io) by Jeffrey A. Clark and contributors (MIT-CMU, screenshots for the GUI test; drew the Chrome button's icons and makes the .exe files' icon), [hatchling](https://github.com/pypa/hatch) by the Python Packaging Authority (MIT, builds the package for the install).

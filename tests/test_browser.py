@@ -220,7 +220,7 @@ def test_the_window_gets_a_fresh_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(host, "fresh_path", lambda: r"C:\Fresh")
     host.start_window(LINK, None)
     [(command, options)] = started
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    pythonw = str(Path(sys.executable).with_name("pythonw.exe"))
     assert command == [pythonw, "-m", "video_downloader", "--", LINK]
     env = options["env"]
     assert isinstance(env, dict)

@@ -146,8 +146,8 @@ RATE_LIMITED = "YouTube is limiting downloads for now. Try again in about an hou
 COUNTRY = "This video isn't available in your country."
 FFMPEG_MISSING = (
     "ffmpeg is missing; it's needed for MP4 and MP3. Install it with "
-    "winget install --id yt-dlp.FFmpeg -e, then restart VS Code (or the "
-    "terminal) and the app."
+    "winget install --id yt-dlp.FFmpeg -e, then restart the app (and VS Code "
+    "or the terminal, if it runs from there)."
 )
 # yt-dlp fetches the subtitles before the video and stops when it can't.
 SUBTITLES_FAILED = (
