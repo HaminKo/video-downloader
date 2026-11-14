@@ -1,17 +1,17 @@
 # To do
 
 ## Where we are
-- Now: No to-do open (pick one from Someday, or a new one)
+- Now: To do 18 (the app uses the Chrome button's icon)
 - Next: Nothing under Bugs me
 - Updated: 2026-11-14
 
 ## To do
-Next number: 18. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
+Next number: 19. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
 
 ### Now
 The one to-do being built.
 
-- Nothing here now.
+- To do 18: The app uses the Chrome button's icon (small; user 2026-11-14): docs/todo/18-app-icon.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
