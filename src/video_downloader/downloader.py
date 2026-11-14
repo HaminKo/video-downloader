@@ -241,6 +241,9 @@ class Cancelled:
 
 type Event = Progress | Done | Failed | Cancelled
 type Report = Callable[[Event], None]
+# Asked before a playlist's first video: its title ("" when it has none) and
+# number of videos; False stops the download (download()).
+type Confirm = Callable[[str, int], bool]
 
 
 class Log:
@@ -363,12 +366,16 @@ def download(
     height: int | None = None,
     subtitles: bool = False,
     cancel: threading.Event | None = None,
+    confirm: Confirm | None = None,
 ) -> None:
     """Download the video at `link` into `folder` (made if missing), or every
     video of a playlist into a folder of its own inside it; `height` and
     `subtitles` as in options(). Setting `cancel` stops the download at
     yt-dlp's next report: within a second while downloading, after the step
-    while ffmpeg joins or converts; a playlist's finished videos stay."""
+    while ffmpeg joins or converts; a playlist's finished videos stay.
+    `confirm` is asked once per playlist (a channel's home link: per tab),
+    once yt-dlp has listed it, before its first video starts; False stops
+    the download there as Cancel does. None: never asked."""
     # The form of the paths yt-dlp reports (it normalizes them with
     # os.path.normpath), so that they compare equal to the folder's own.
     folder = Path(os.path.abspath(folder))
@@ -421,13 +428,18 @@ def download(
         if not (number and count):
             return
         playlist = info.get("playlist_id")
+        title = info.get("playlist_title") or info.get("playlist") or ""
+        # Its first call with a number: not always number 1, as on Reddit and
+        # X a video whose lookup fails gets no call.
+        if playlist not in sizes and confirm is not None and not confirm(title, count):
+            raise DownloadCancelled
         sizes[playlist] = count
         if (playlist, number) not in started:
             started.add((playlist, number))
             # A conversion that failed leaves its source, as for one video.
             mp3_sources.clear()
             number_text = VIDEO_NUMBER.format(number=number, count=count)
-            playlist_title = info.get("playlist_title") or info.get("playlist") or ""
+            playlist_title = title
             tell(Progress(LOOKING_IT_UP, None))
 
     def on_progress(status: Mapping[str, Any]) -> None:

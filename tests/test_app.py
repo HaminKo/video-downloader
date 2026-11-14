@@ -14,6 +14,7 @@ import pytest
 
 from video_downloader import handoff
 from video_downloader.app import (
+    ASK_ABOVE,
     CANCELLED,
     CANCELLING,
     CHECK_EVERY,
@@ -45,6 +46,7 @@ from video_downloader.app import (
 from video_downloader.downloader import (
     NOT_AVAILABLE,
     Cancelled,
+    Confirm,
     Done,
     Event,
     Failed,
@@ -65,7 +67,9 @@ class FakeDownload:
     `events`) at once and remembers the calls. A link in `wait_for_cancel`
     reports only their progress, then waits for Cancel and reports
     Cancelled (with a playlist's videos in `kept`): one download's last
-    report must be its only end."""
+    report must be its only end. A link in `playlists` (its title and number
+    of videos) asks `confirm` first, remembering the answer in `answers`;
+    after a no it reports Cancelled only."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Kind, Path, int | None, bool]] = []
@@ -76,6 +80,8 @@ class FakeDownload:
         self.results: dict[str, list[Event]] = {}
         self.wait_for_cancel: set[str] = set()
         self.kept: tuple[Path, ...] = ()
+        self.playlists: dict[str, tuple[str, int]] = {}
+        self.answers: list[bool] = []
 
     def __call__(
         self,
@@ -86,8 +92,14 @@ class FakeDownload:
         height: int | None,
         subtitles: bool,
         cancel: threading.Event,
+        confirm: Confirm,
     ) -> None:
         self.calls.append((link, kind, folder, height, subtitles))
+        if link in self.playlists:
+            self.answers.append(confirm(*self.playlists[link]))
+            if not self.answers[-1]:
+                report(Cancelled())
+                return
         until_cancelled = link in self.wait_for_cancel
         for event in self.results.get(link, self.events):
             if isinstance(event, Progress) or not until_cancelled:
@@ -439,6 +451,7 @@ def test_a_broken_download_doesnt_stop_the_queue(app: App) -> None:
         height: int | None,
         subtitles: bool,
         cancel: threading.Event,
+        confirm: Confirm,
     ) -> None:
         if link == LINK:
             raise RuntimeError("boom")
@@ -816,6 +829,108 @@ def to_front(monkeypatch: pytest.MonkeyPatch) -> list[tk.Tk]:
     calls: list[tk.Tk] = []
     monkeypatch.setattr("video_downloader.app.bring_to_front", calls.append)
     return calls
+
+
+class FakeBox:
+    """Stands in for the Yes/No box: remembers its texts and gives `answer`."""
+
+    def __init__(self, answer: bool) -> None:
+        self.answer = answer
+        self.texts: list[str] = []
+
+    def __call__(self, root: tk.Tk, text: str) -> bool:
+        self.texts.append(text)
+        return self.answer
+
+
+@pytest.mark.parametrize("answer", [True, False], ids=["yes", "no"])
+def test_a_big_playlist_asks_first_with_the_window_in_front(
+    app: App, fake: FakeDownload, to_front: list[tk.Tk], answer: bool
+) -> None:
+    box = app.ask = FakeBox(answer)
+    fake.playlists[LINK] = ("My channel - Videos", 1234)
+    add(app, LINK)
+    wait_until_done(app)
+    text = "“My channel - Videos” has 1,234 videos. Download all of them?"
+    assert box.texts == [text]
+    assert to_front == [app.root], "a download from Chrome runs in the background"
+    assert fake.answers == [answer]
+    if answer:
+        assert rows(app)[0][2] == "Done"
+    else:
+        assert rows(app)[0][2] == "Cancelled"
+        assert app.status.get() == CANCELLED
+        assert app.play_button.instate(["disabled"]), "nothing saved"
+
+
+@pytest.mark.parametrize(
+    ("title", "count", "text"),
+    [
+        ("Small list", ASK_ABOVE, None),
+        ("", ASK_ABOVE + 1, "This playlist has 51 videos. Download all of them?"),
+    ],
+    ids=["up to 50: no box", "above 50, no title"],
+)
+def test_only_a_playlist_above_50_videos_asks(
+    app: App,
+    fake: FakeDownload,
+    to_front: list[tk.Tk],
+    title: str,
+    count: int,
+    text: str | None,
+) -> None:
+    box = app.ask = FakeBox(True)
+    fake.playlists[LINK] = (title, count)
+    add(app, LINK)
+    wait_until_done(app)
+    assert box.texts == ([text] if text else [])
+    assert len(to_front) == len(box.texts)
+    assert fake.answers == [True]
+
+
+def test_a_big_playlist_waiting_its_turn_asks_too(
+    app: App, fake: FakeDownload, to_front: list[tk.Tk]
+) -> None:
+    # It asks as soon as it starts, while the check that saw the first one
+    # end is still running (code review: that check asked with the ended row).
+    box = app.ask = FakeBox(True)
+    fake.playlists[LINK2] = ("My channel - Videos", 1234)
+    add(app, LINK)
+    add(app, LINK2)
+    wait_until_done(app)
+    assert len(box.texts) == 1
+    assert fake.answers == [True]
+    assert [row[2] for row in rows(app)] == ["Done", "Done"]
+
+
+def test_after_cancel_a_question_gets_no_without_a_box(
+    app: App, to_front: list[tk.Tk]
+) -> None:
+    answers: list[bool] = []
+
+    def listing(
+        link: str,
+        kind: Kind,
+        folder: Path,
+        report: Report,
+        height: int | None,
+        subtitles: bool,
+        cancel: threading.Event,
+        confirm: Confirm,
+    ) -> None:
+        # Cancel while yt-dlp lists the playlist, before it can act.
+        cancel.wait(timeout=5)
+        answers.append(confirm("My channel - Videos", 1234))
+        report(Cancelled())
+
+    app.run_download = listing
+    box = app.ask = FakeBox(True)
+    add(app, LINK)
+    app.cancel_button.invoke()
+    wait_until_done(app)
+    assert answers == [False]
+    assert box.texts == [] and to_front == []
+    assert app.status.get() == CANCELLED
 
 
 def test_a_received_link_replaces_the_box_and_waits(

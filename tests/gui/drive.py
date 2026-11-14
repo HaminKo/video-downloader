@@ -35,6 +35,7 @@ from video_downloader.app import (
 from video_downloader.downloader import (
     NOT_AVAILABLE,
     Cancelled,
+    Confirm,
     Done,
     Failed,
     Kind,
@@ -49,6 +50,9 @@ SCREENSHOT_DIR = Path(tempfile.gettempdir()) / "video-downloader-screenshots"
 LINK = "https://www.youtube.com/watch?v=abc_123-XYZ"
 LINK2 = "https://www.youtube.com/watch?v=def_456-UVW"
 PLAYLIST_LINK = "https://www.youtube.com/playlist?list=PLabc_123-XYZ"
+# A channel's videos, which FakeDownload asks about first (its title and size).
+CHANNEL_LINK = "https://www.youtube.com/@abc_123/videos"
+CHANNEL = ("Big channel - Videos", 1234)
 
 # What FakeDownload reports: the video's title by its link (VIDEO_TITLE for
 # any other), and this progress. For PLAYLIST_LINK, the playlist's title, its
@@ -195,7 +199,8 @@ class FakeDownload:
     """Stands in for yt-dlp, so nothing touches the internet: reports PROGRESS
     (PLAYLIST_PROGRESS for PLAYLIST_LINK), then waits for finish() before
     reporting Done, or the failure given to finish(); or for Cancel, then
-    reports Cancelled."""
+    reports Cancelled. CHANNEL_LINK asks `confirm` about CHANNEL first, and
+    after a no reports Cancelled only."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Kind, Path, int | None, bool]] = []
@@ -211,8 +216,12 @@ class FakeDownload:
         height: int | None,
         subtitles: bool,
         cancel: threading.Event,
+        confirm: Confirm,
     ) -> None:
         self.calls.append((link, kind, folder, height, subtitles))
+        if link == CHANNEL_LINK and not confirm(*CHANNEL):
+            report(Cancelled())
+            return
         title = TITLES.get(link, VIDEO_TITLE)
         playlist = link == PLAYLIST_LINK
         report(Progress(PLAYLIST_PROGRESS if playlist else PROGRESS, 40.0, title))

@@ -632,6 +632,31 @@ def test_a_playlist_counts_the_videos_without_english_subtitles(
     assert first.with_suffix(".en.srt").is_file()
 
 
+@pytest.mark.parametrize("answer", [True, False], ids=["yes", "no"])
+def test_a_playlist_is_confirmed_before_its_first_video(
+    clip_link: str, answer: bool, tmp_path: Path
+) -> None:
+    asked: list[tuple[str, int]] = []
+
+    def confirm(title: str, count: int) -> bool:
+        asked.append((title, count))
+        return answer
+
+    events: list[Event] = []
+    page = clip_link.replace("clip.mp4", "two.html")
+    download(page, Kind.MP4, tmp_path, events.append, confirm=confirm)
+    assert asked == [("Two clips", 2)], "once per playlist"
+    if answer:
+        first = tmp_path / "Two clips" / "Two clips (1).mp4"
+        assert events[-1] == Done(first, False, playlist=Playlist(2, 2, 0))
+        # A single video isn't asked about.
+        download(clip_link, Kind.MP4, tmp_path, events.append, confirm=confirm)
+        assert asked == [("Two clips", 2)]
+    else:
+        assert events == [Cancelled()], "stopped before its first video"
+        assert list(tmp_path.iterdir()) == [], "nothing saved"
+
+
 def cancel_at(
     text: str | None,
     link: str,

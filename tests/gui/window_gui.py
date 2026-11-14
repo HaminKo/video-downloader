@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from drive import (
+    CHANNEL_LINK,
     FIRST_VIDEO,
     LINK,
     LINK2,
@@ -175,6 +176,30 @@ def test_a_sent_cancel_stops_that_download(
     wait_until(app, lambda: not app.busy, "the download to stop")
     assert rows(app) == [(TITLES[LINK2], "MP4", "Cancelled")]
     assert app.status.get() == CANCELLED
+
+
+def test_a_big_channel_sent_from_chrome_asks_first(
+    app: App, fake: FakeDownload, pipe: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A channel's videos sent with choices: the window comes to the front
+    for the Yes/No box (a fake answering No: a real one would wait for a
+    click), and nothing is downloaded."""
+    to_front: list[tk.Tk] = []
+    monkeypatch.setattr("video_downloader.app.bring_to_front", to_front.append)
+    asked: list[tuple[str, bool]] = []
+
+    def answer_no(root: tk.Tk, text: str) -> bool:
+        asked.append((text, to_front == [root]))
+        return False
+
+    app.ask = answer_no
+    assert handoff.send(CHANNEL_LINK, pipe, handoff.Choices("mp4"))
+    wait_until(app, lambda: bool(asked) and not app.busy, "the box's answer")
+    text = "“Big channel - Videos” has 1,234 videos. Download all of them?"
+    assert asked == [(text, True)], "asked once, with the window in front"
+    assert rows(app) == [(CHANNEL_LINK, "MP4", "Cancelled")]
+    assert app.status.get() == CANCELLED
+    assert app.play_button.instate(["disabled"]), "nothing saved"
 
 
 def test_download_button_shows_progress_then_done(app: App, fake: FakeDownload) -> None:

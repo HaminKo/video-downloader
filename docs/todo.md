@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: To do 8, step C (ask above 50)
+- Now: Nothing open (pick a to-do from Someday)
 - Next: Nothing under Bugs me
 - Updated: 2026-11-14
 
@@ -11,7 +11,7 @@ Next number: 20. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- To do 8: Playlists and whole channels (medium; user 2026-11-11; planned, moved to Someday 2026-11-12, picked up again by the user 2026-11-14): docs/todo/08-playlists.md
+- Nothing here now.
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.

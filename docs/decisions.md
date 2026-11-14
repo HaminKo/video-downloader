@@ -2,6 +2,16 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: A playlist above 50 videos asks first, in a Yes/No box, with the window brought to the front
+- **Decision:** download() takes a `confirm(title, count)` callback, asked once per playlist (a channel's home link: per tab) on its first `match_filter` call with `n_entries`, so after yt-dlp's listing and before the first video; False raises `DownloadCancelled` there (Cancelled, nothing saved; tabs already finished are kept). The window answers yes up to `ASK_ABOVE` (50) videos; above, the download's thread hands the question to the window's thread (a queue and a Future, as the popup's Cancel does) and waits. `check_events()` asks it last, after updating the rows: `bring_to_front()`, then `messagebox.askyesno` on the window ("“Name” has 1,234 videos. Download all of them?", Yes is Enter's default). A download already cancelling gets No without a box. The tests pass a fake box (`App(..., ask=...)`). To do 8, step C.
+- **Reason:** a channel can have thousands of videos (To do 8, question b). The window comes to the front because a download sent from Chrome runs in a minimized window or one behind the browser, where a box would go unseen (a box on a minimized window may not show at all: not measured) while the download waits.
+- **Who decided:** the user, on Claude's suggestions (To do 8's plan, answer 2, and step C's questions 1-4, 2026-11-14).
+- **Rejected:**
+  - no box for a download sent from Chrome: that is where a big channel is most likely to come from
+  - asking in the Chrome popup: it closes when the user clicks elsewhere, and listing a big channel can take tens of seconds (estimated)
+  - No skipping only that tab of a channel's home link: more code for a link the guide already advises against (use `/videos`)
+  - the limit in downloader.py: download() asks about every playlist and the window decides, so the downloader's tests use the two-video test page
+
 ## 2026-11-14: A playlist downloads all its videos into a folder of its own, as one row
 - **Decision:** a playlist or channel link downloads every video (`playlist_items` dropped; `noplaylist` stays, so a `watch?v=...&list=...` link is just that video), into `Videos\<the playlist's title, cut to 80 bytes>\` (`%(playlist_title|.).80B/` in front of the file name; a single video stays in Videos). In the window it is one row: the playlist's title, "Video N of M: ..." in front of the progress (from yt-dlp's `match_filter`), the bar and the State column's percent for the current video. The end message counts saved, already there and failed videos (failed = the playlists' `n_entries` minus the finished videos) with the first failure's reason, in red only when none was saved. Play and Show in folder use the first finished video. Cancel also acts between videos, stops the rest and keeps the finished videos (`Cancelled.kept`): in the post hook a finished video's files join the "there before" set and `prefixes` is emptied. A channel's home link gets yt-dlp's default, a folder per tab. A finished playlist is kept in the history like any finished row; a cancelled one isn't. To do 8, step B.
 - **Reason:** the user's To do 8 ("Playlists and whole channels").

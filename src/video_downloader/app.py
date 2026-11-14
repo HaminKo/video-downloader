@@ -31,12 +31,13 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from tkinter import font, ttk
+from tkinter import font, messagebox, ttk
 
 from video_downloader import downloader, handoff
 from video_downloader.browser import EXTENSION_FOLDER
 from video_downloader.downloader import (
     Cancelled,
+    Confirm,
     Done,
     Event,
     Failed,
@@ -70,6 +71,11 @@ SOME_WITHOUT_SUBTITLES = "No English subtitles for {count} of the videos."
 GONE = "Can't play {name}: it isn't in {folder} anymore."
 LINK_RECEIVED = "Link received: choose MP4 or MP3, then Download."
 
+# A playlist with more videos than this is downloaded only after a Yes in a
+# box (ask_yes_no()): a channel can have thousands.
+ASK_ABOVE = 50
+MANY_VIDEOS = "{playlist} has {count:,} videos. Download all of them?"
+
 # The video quality choices and their limit as the downloader takes it
 # (handoff.py, which the Chrome button's helper shares them from).
 QUALITIES = handoff.QUALITIES
@@ -99,10 +105,20 @@ HISTORY = downloader.DATA_FOLDER / "history.json"
 HISTORY_SIZE = 200
 
 # link, MP4 or MP3, folder, report, the quality limit (None: the best),
-# English subtitles, cancel (set: stop and report Cancelled)
+# English subtitles, cancel (set: stop and report Cancelled), confirm (asked
+# before a playlist's first video; False: stop as Cancel does)
 type Download = Callable[
-    [str, Kind, Path, Report, int | None, bool, threading.Event], None
+    [str, Kind, Path, Report, int | None, bool, threading.Event, Confirm], None
 ]
+
+# Shows a Yes/No box on the window with this text; True: Yes.
+type Ask = Callable[[tk.Tk, str], bool]
+
+
+def ask_yes_no(root: tk.Tk, text: str) -> bool:
+    """Ask in a Yes/No box on the window (Yes is what Enter picks); the
+    window waits until it is answered. The tests pass a fake."""
+    return messagebox.askyesno(TITLE, text, parent=root)
 
 
 class State(StrEnum):
@@ -205,6 +221,8 @@ class App:
     listening: the named pipe taken for this window (handoff.listen(): main()
     takes handoff.PIPE, tests one of their own); the window starts reading
     the links sent from outside there. None: don't listen.
+    ask: the Yes/No box for a playlist above ASK_ABOVE videos (default:
+    ask_yes_no(); the tests pass a fake).
     """
 
     def __init__(
@@ -215,6 +233,7 @@ class App:
         files: Files | None = None,
         history: Path | None = None,
         listening: handoff.Listening | None = None,
+        ask: Ask = ask_yes_no,
     ) -> None:
         self.root = root
         self.run_download = download
@@ -233,6 +252,10 @@ class App:
         self.cancels: queue.Queue[tuple[str, Future[handoff.Answer]]] = queue.Queue()
         self.next_link_check = ""  # the scheduled check_links()
         self.listening = listening
+        self.ask = ask
+        # Questions from the running download (confirm_playlist()): the box's
+        # text, and where its answer goes.
+        self.questions: queue.Queue[tuple[str, Future[bool]]] = queue.Queue()
 
         root.title(TITLE)
         # Kept here: Tk drops an image that Python no longer refers to.
@@ -465,11 +488,33 @@ class App:
                 job.height,
                 job.subtitles,
                 cancel,
+                self.confirm_playlist,
             )
         except Exception as error:
             traceback.print_exc()  # the details, in the terminal
             report(Failed(f"Something went wrong: {error}"))
         report(Failed(NO_END))  # dropped when it has ended already
+
+    def confirm_playlist(self, title: str, count: int) -> bool:
+        """The download's `confirm`, in its thread: yes for a playlist of up
+        to ASK_ABOVE videos. Above that, the window asks (check_events())
+        and the download waits for the answer."""
+        if count <= ASK_ABOVE:
+            return True
+        playlist = f"“{title}”" if title else "This playlist"
+        answer: Future[bool] = Future()
+        self.questions.put((MANY_VIDEOS.format(playlist=playlist, count=count), answer))
+        return answer.result()
+
+    def answer_question(self, job: Job | None, text: str) -> bool:
+        """Ask the running download's question in the box, with the window in
+        front: a download from outside runs in a minimized window or one
+        behind the browser, where nobody would see it. No without a box once
+        Cancel was pressed (during yt-dlp's listing, it can't act yet)."""
+        if job is None or job.state is not State.DOWNLOADING:
+            return False
+        bring_to_front(self.root)
+        return self.ask(self.root, text)
 
     def cancel_download(self) -> None:
         """Cancel: stop the running download (stop_running()) and select its
@@ -571,6 +616,13 @@ class App:
                 # The next one gets selected unless another row was selected
                 # since this one started: the user is looking at that one.
                 self.start_next(select=self.selected() in (row, ""))
+        # Last, as the box waits for its answer: the rows are up to date
+        # meanwhile, and this check is scheduled again only after it. Only
+        # the running download asks: the one start_next() may just have
+        # started.
+        while not self.questions.empty():
+            text, answer = self.questions.get()
+            answer.set_result(self.answer_question(self.jobs.get(self.running), text))
         if self.busy and not self.next_check:
             self.next_check = self.root.after(CHECK_EVERY, self.check_events)
 
@@ -921,6 +973,7 @@ def start(
     listening: handoff.Listening | None = None,
     link: str = "",
     choices: handoff.Choices | None = None,
+    ask: Ask = ask_yes_no,
 ) -> App:
     """Build the window as the user sees it; the GUI test starts it this way
     too. The parameters are App's, and link: put in the box at the start, or
@@ -933,7 +986,7 @@ def start(
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
         # Before the window opens: a taskbar button of its own, with its icon.
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
-    app = App(tk.Tk(), download, folder, files, history, listening)
+    app = App(tk.Tk(), download, folder, files, history, listening, ask)
     if link and choices is not None:
         app.add_download(link, choices)
         app.root.iconify()
