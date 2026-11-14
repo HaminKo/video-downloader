@@ -51,6 +51,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - Cancel button next to Download: raises yt-dlp's `DownloadCancelled` from the hooks, then deletes only files that are new since the start and named `Title.` + anything (never one that was there before); an ffmpeg step finishes first.
 - MP3 sets `keepvideo`; the app deletes the file converted from only when it wasn't in the folder before (an MP4 already there stays).
 - Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.
+- The window's icon: extension/icons' PNGs through `iconphoto` (one copy), and the app ID `VideoDownloader.App` set in `start()` before `tk.Tk()`, or the taskbar shows Python's icon.
 - The GUI test drives the window with Tk's own key and click events in the same process, never real OS input; screenshots with Pillow (development only).
 - GUI test and screenshot windows open on the topmost other screen with the main screen's scaling (picked automatically) and never take the front: focus with Windows' `SetFocus`, never `focus_force()`; `bring_to_front()` is recorded there, not called.
 

@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: To do 18 (the app uses the Chrome button's icon)
+- Now: Nothing open (Bugs me is empty; pick one from Someday or add one)
 - Next: Nothing under Bugs me
 - Updated: 2026-11-14
 
@@ -11,7 +11,7 @@ Next number: 19. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- To do 18: The app uses the Chrome button's icon (small; user 2026-11-14): docs/todo/18-app-icon.md
+- Nothing here now.
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.

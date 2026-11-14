@@ -2,6 +2,16 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: The window uses the Chrome button's icon, with a taskbar ID of its own
+- **Decision:** `App.__init__` loads extension/icons' four PNGs (16, 32, 48, 128 px) and calls `root.iconphoto(True, ...)`, which sets the title bar, taskbar and Alt+Tab icon; `start()` calls `SetCurrentProcessExplicitAppUserModelID("VideoDownloader.App")` before the window opens. No .ico file yet.
+- **Reason:** since To do 16 a download from Chrome opens the window minimized, so the taskbar button is all you see of it. Without the ID, the window joined the pinned Python button and showed Python's icon (measured on this PC); with it, the window gets a button of its own with the blue arrow. Reading the extension's PNGs keeps one copy of the icon. Tk passes Windows the 32 px image, scaled to 24 px in the title bar at 150%; it looks clean in the screenshot (docs/research/window-icon.md).
+- **Who decided:** the user, on Claude's suggestions (To do 18, answers a-d).
+- **Rejected:**
+  - icons at exact sizes through Windows' `WM_SETICON` (about 25 lines of ctypes): the scaled one looks fine
+  - an .ico file now: To do 11's installer makes one when it needs it
+  - no taskbar ID: the taskbar keeps Python's icon
+- **Drawback, left for To do 11:** pinning the window's taskbar button may not start the app (not tested); a Start-menu shortcut with the same ID would fix it.
+
 ## 2026-11-14: Downloads start from Chrome; the choices move to Chrome, the downloading stays in the app; pipe messages are JSON
 - **Decision:** the Chrome button opens a popup with the window's choices (MP4 or MP3, the quality, English subtitles; its own last choices remembered) and Download; the link and the choices go to the open window, which adds a row without touching its box, its own choices or its place on the screen (with nothing downloading, the new row is selected, as with the window's own Download), or to a window that opens minimized with the download running (`python -m video_downloader LINK --download mp3 [--quality 720p] [--subtitles]`). A link alone still fills in the box ("Open in the window instead" in the popup, and `python -m video_downloader LINK`). Messages on the pipe, and from Chrome to its helper, are JSON: `{"link": ...}`, or with `"start": {"kind", "quality", "subtitles"}`; handoff.py checks them (all three choices, known values) and holds the choice names (`KINDS`, `QUALITIES`) that host.py and app.py share. Nothing shows in Chrome when a download ends (To do 16, answer f).
 - **Reason:** the user wants to download from Chrome without switching to the window. The window already queues, shows progress and keeps the history; the popup only has to send the choices. A message with choices carries more than a link: JSON for both kinds keeps one format, and `json.loads` runs no code. The helper never imports yt-dlp, so the choice names live in handoff.py (which it imports) rather than in downloader.py.

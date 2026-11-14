@@ -29,6 +29,7 @@ from pathlib import Path
 from tkinter import font, ttk
 
 from video_downloader import downloader, handoff
+from video_downloader.browser import EXTENSION_FOLDER
 from video_downloader.downloader import (
     Cancelled,
     Done,
@@ -40,6 +41,16 @@ from video_downloader.downloader import (
 )
 
 TITLE = "Video Downloader"
+
+# The window's icon: the Chrome button's, one PNG per size. Tk gives Windows
+# the 32 px one for the taskbar and Alt+Tab, scaled down for the title bar
+# (docs/research/window-icon.md).
+ICONS = EXTENSION_FOLDER / "icons"
+ICON_SIZES = (16, 32, 48, 128)
+
+# The app's own ID for Windows' taskbar: without it, the window joins
+# Python's taskbar button and shows Python's icon (measured).
+APP_ID = "VideoDownloader.App"
 PASTE_A_LINK = "Paste a link to a video first."
 LOOKING_UP = "Looking up the video..."
 CANCELLING = "Cancelling..."
@@ -211,6 +222,12 @@ class App:
         self.listening: handoff.Listening | None = None
 
         root.title(TITLE)
+        # Kept here: Tk drops an image that Python no longer refers to.
+        self.icons = [
+            tk.PhotoImage(master=root, file=ICONS / f"{size}.png")
+            for size in ICON_SIZES
+        ]
+        root.iconphoto(True, *self.icons)
         root.minsize(window_width(root), 0)
         root.columnconfigure(0, weight=1)
 
@@ -811,6 +828,8 @@ def start(
         import ctypes
 
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        # Before the window opens: a taskbar button of its own, with its icon.
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     app = App(tk.Tk(), download, folder, files, history, pipe)
     if link and choices is not None:
         app.add_download(link, choices)

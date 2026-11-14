@@ -140,6 +140,23 @@ user32.EnumDisplayMonitors.argtypes = [
     MonitorEnumProc,
     wintypes.LPARAM,
 ]
+shell32 = ctypes.WinDLL("shell32")
+shell32.GetCurrentProcessExplicitAppUserModelID.argtypes = [
+    ctypes.POINTER(ctypes.c_void_p)
+]
+ole32 = ctypes.WinDLL("ole32")
+ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+
+
+def app_id() -> str:
+    """The ID this process gave itself for Windows' taskbar; "" if none."""
+    text = ctypes.c_void_p()
+    if shell32.GetCurrentProcessExplicitAppUserModelID(ctypes.byref(text)) != 0:
+        return ""
+    try:
+        return ctypes.wstring_at(text.value) if text.value else ""
+    finally:
+        ole32.CoTaskMemFree(text)
 
 
 class InputState:

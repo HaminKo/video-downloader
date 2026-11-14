@@ -21,6 +21,7 @@ from drive import (
     FakeDownload,
     FakeFiles,
     Screen,
+    app_id,
     assert_inside_window,
     box,
     click,
@@ -36,6 +37,7 @@ from drive import (
 
 from video_downloader import handoff
 from video_downloader.app import (
+    APP_ID,
     CANCELLED,
     FAILED_COLOR,
     LINK_RECEIVED,
@@ -99,6 +101,7 @@ def rows(app: App) -> list[tuple[str, ...]]:
 
 def test_enter_in_link_box_starts_download(app: App, fake: FakeDownload) -> None:
     assert app.root.title() == TITLE
+    assert app_id() == APP_ID, "a taskbar button of its own, with the app's icon"
     type_text(app.link_entry, LINK)
     assert app.link.get() == LINK, "the typed link should be in the link box"
     press(app.link_entry, "Return")

@@ -194,6 +194,13 @@ def test_window_has_its_parts(app: App) -> None:
     assert app.remove_button.instate(["disabled"]), "nothing to remove yet"
 
 
+def test_window_has_the_chrome_buttons_icon(app: App) -> None:
+    sizes = [(icon.width(), icon.height()) for icon in app.icons]
+    assert sizes == [(16, 16), (32, 32), (48, 48), (128, 128)]
+    # Tk gives Windows the 32 px image: blue left of the arrow (#2563eb).
+    assert app.icons[1].get(4, 16) == (0x25, 0x63, 0xEB)
+
+
 def test_window_width_follows_the_display_scaling(
     app: App, monkeypatch: pytest.MonkeyPatch
 ) -> None:
