@@ -1,5 +1,6 @@
 import json
 import os
+import queue
 import subprocess
 import threading
 import time
@@ -787,6 +788,22 @@ def test_a_received_link_replaces_the_box_and_waits(
     assert not app.busy
 
 
+def test_the_app_started_again_brings_the_window_to_the_front(
+    app: App, to_front: list[tk.Tk]
+) -> None:
+    app.link.set("half a typed link")
+    app.received.put(handoff.SHOW)
+    app.check_links()
+    assert to_front == [app.root]
+    assert app.link.get() == "half a typed link", "the box stays as it was"
+    app.root.after_cancel(app.next_link_check)  # one check at a time, as in the app
+    app.received.put(handoff.SHOW)
+    app.received.put(Message(LINK))
+    app.check_links()
+    assert to_front == [app.root, app.root], "once for both"
+    assert app.link.get() == LINK
+
+
 def test_a_link_sent_to_the_pipe_reaches_the_window(
     fake: FakeDownload,
     files: FakeFiles,
@@ -797,7 +814,7 @@ def test_a_link_sent_to_the_pipe_reaches_the_window(
     root = tk.Tk()
     root.withdraw()
     try:
-        window = App(root, fake, tmp_path, files, pipe=pipe)
+        window = App(root, fake, tmp_path, files, listening=handoff.listen(pipe))
         assert window.listening is not None
         assert handoff.send(LINK, pipe)
         deadline = time.monotonic() + 5
@@ -921,7 +938,7 @@ def listening_window(
     root = tk.Tk()
     root.withdraw()
     try:
-        window = App(root, fake, folder, files, pipe=pipe)
+        window = App(root, fake, folder, files, listening=handoff.listen(pipe))
         assert window.listening is not None
         yield window
     finally:
@@ -1009,60 +1026,156 @@ def test_start_with_choices_downloads_in_a_minimized_window(
 
 
 @pytest.fixture
-def opened(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
-    """Record the windows main() opens instead of opening them."""
+def opened(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, object]]]:
+    """Record the windows main() opens instead of opening them. The pipe each
+    one took stays taken until the test ends, as by a window still being
+    built (it reads only once it is built)."""
     calls: list[dict[str, object]] = []
 
-    def fake_start(**choices: object) -> SimpleNamespace:
-        calls.append(choices)
+    def fake_start(**options: object) -> SimpleNamespace:
+        calls.append(options)
         return SimpleNamespace(root=SimpleNamespace(mainloop=lambda: None))
 
     monkeypatch.setattr("video_downloader.app.start", fake_start)
-    return calls
+    yield calls
+    for options in calls:
+        if isinstance(listening := options["listening"], handoff.Listening):
+            listening.close()
 
 
-def test_main_hands_a_link_to_the_open_window(
-    monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
+def took_the_pipe(options: dict[str, object]) -> bool:
+    """The window main() opened took handoff.PIPE (the test's own,
+    conftest.py), so it gets what is sent there."""
+    listening = options["listening"]
+    return isinstance(listening, handoff.Listening) and listening.pipe == handoff.PIPE
+
+
+@contextmanager
+def open_window_on(pipe: str) -> Iterator[queue.Queue[Message]]:
+    """A window that is open already and listens on `pipe`; what it gets goes
+    into the queue."""
+    listening = handoff.listen(pipe)
+    assert listening is not None
+    received: queue.Queue[Message] = queue.Queue()
+    listening.start(received.put)
+    try:
+        yield received
+    finally:
+        listening.close()
+
+
+def test_main_hands_everything_to_the_open_window(
+    opened: list[dict[str, object]],
 ) -> None:
-    sent: list[tuple[str, str, Choices | None]] = []
-
-    def fake_send(link: str, pipe: str, start: Choices | None = None) -> bool:
-        sent.append((link, pipe, start))
-        return True
-
-    monkeypatch.setattr(handoff, "send", fake_send)
-    main([f" {LINK} "])
-    main([LINK, "--download", "mp4", "--quality", "720p", "--subtitles"])
-    main(["--download", "mp3", LINK])
-    assert sent == [
-        (LINK, handoff.PIPE, None),
-        (LINK, handoff.PIPE, Choices("mp4", "720p", True)),
-        (LINK, handoff.PIPE, Choices("mp3", "Best", False)),
+    with open_window_on(handoff.PIPE) as received:
+        main([f" {LINK} "])
+        main([LINK, "--download", "mp4", "--quality", "720p", "--subtitles"])
+        main(["--download", "mp3", LINK])
+        main([])  # the app started again: the open window to the front
+        got = [received.get(timeout=5) for _ in range(4)]
+    assert got == [
+        Message(LINK),
+        Message(LINK, Choices("mp4", "720p", True)),
+        Message(LINK, Choices("mp3", "Best", False)),
+        handoff.SHOW,
     ]
     assert opened == [], "no second window"
 
 
+@pytest.mark.parametrize(
+    ("arguments", "choices"),
+    [([LINK], None), ([LINK, "--download", "mp3"], Choices("mp3"))],
+    ids=["link", "download"],
+)
 def test_main_opens_a_window_with_the_link_when_none_is_open(
-    opened: list[dict[str, object]],
+    arguments: list[str], choices: Choices | None, opened: list[dict[str, object]]
 ) -> None:
-    # handoff.PIPE is the test's own (conftest.py): no window listens there.
-    main([LINK])
-    main([LINK, "--download", "mp3"])
-    assert opened == [
-        {"pipe": handoff.PIPE, "link": LINK, "choices": None},
-        {"pipe": handoff.PIPE, "link": LINK, "choices": Choices("mp3")},
-    ]
+    main(arguments)
+    [options] = opened
+    assert took_the_pipe(options)
+    assert (options["link"], options["choices"]) == (LINK, choices)
 
 
 def test_main_without_a_link_opens_an_empty_window(
     monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
 ) -> None:
-    def fake_send(link: str, pipe: str, start: Choices | None = None) -> bool:
-        raise AssertionError("nothing to send")
+    def fake_show(pipe: str) -> bool:
+        raise AssertionError("no window to bring to the front")
 
-    monkeypatch.setattr(handoff, "send", fake_send)
+    monkeypatch.setattr(handoff, "show", fake_show)
     main([])
-    assert opened == [{"pipe": handoff.PIPE, "link": "", "choices": None}]
+    [options] = opened
+    assert took_the_pipe(options)
+    assert (options["link"], options["choices"]) == ("", None)
+
+
+def test_two_windows_started_at_once_end_in_one(
+    opened: list[dict[str, object]],
+    fake: FakeDownload,
+    files: FakeFiles,
+    tmp_path: Path,
+) -> None:
+    """Download in the Chrome popup on two tabs, with no window open: the
+    second starts while the first, which took the pipe, is still being
+    built. It hands its download over, and the first window, once built,
+    downloads both, its own first."""
+    main([LINK, "--download", "mp4"])
+    main([LINK2, "--download", "mp3"])
+    [options] = opened
+    assert options == {
+        "listening": options["listening"],
+        "link": LINK,
+        "choices": Choices("mp4"),
+    }
+    listening = options["listening"]
+    assert took_the_pipe(options) and isinstance(listening, handoff.Listening)
+    history = tmp_path / "history.json"
+    window = start(fake, tmp_path, files, history, listening, LINK, Choices("mp4"))
+    try:
+        deadline = time.monotonic() + 5
+        while len(fake.calls) < 2:
+            assert time.monotonic() < deadline, "the second download never came"
+            window.root.update()
+            time.sleep(0.01)
+        assert [call[:2] for call in fake.calls] == [
+            (LINK, Kind.MP4),
+            (LINK2, Kind.MP3),
+        ]
+    finally:
+        window.root.destroy()
+
+
+@pytest.mark.parametrize("closing", [True, False], ids=["closing", "stuck"])
+def test_main_when_handing_over_fails(
+    closing: bool, monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
+) -> None:
+    """The open window was closing: the new one takes its pipe. It is stuck:
+    the new one opens all the same, without listening."""
+    other = handoff.listen(handoff.PIPE)
+    assert other is not None
+
+    def fails(link: str, pipe: str, start: Choices | None = None) -> bool:
+        if closing:
+            other.close()
+        return False
+
+    monkeypatch.setattr(handoff, "send", fails)
+    try:
+        main([LINK])
+    finally:
+        other.close()
+    [options] = opened
+    assert took_the_pipe(options) is closing
+    assert options["link"] == LINK
+
+
+def test_main_opens_a_window_when_the_pipe_cant_be_made(
+    monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
+) -> None:
+    too_long = r"\\.\pipe" + "\\" + "x" * 300  # Windows allows 256 characters
+    monkeypatch.setattr(handoff, "PIPE", too_long)
+    main([LINK])
+    assert opened == [{"listening": None, "link": LINK, "choices": None}]
 
 
 @pytest.mark.parametrize(

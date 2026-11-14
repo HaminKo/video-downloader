@@ -13,9 +13,11 @@ link sent with the choices to download it with (`--download mp3`) joins the
 list instead, and leaves the box, the window's choices and its place alone;
 with no window open, one opens minimized with it downloading. A Cancel sent
 (the Chrome popup's) stops that link's download, and the window answers
-whether it did."""
+whether it did. There is only ever one window: the app started again with
+no link brings the open one to the front (main())."""
 
 import argparse
+import contextlib
 import json
 import os
 import queue
@@ -200,8 +202,9 @@ class App:
     files: what opens the downloaded file or its folder (the tests pass a fake).
     history: the file of past downloads (default: HISTORY; the tests pass one
     in a temporary folder).
-    pipe: the named pipe to listen on for links sent from outside (main()
-    passes handoff.PIPE; tests pass one of their own). None: don't listen.
+    listening: the named pipe taken for this window (handoff.listen(): main()
+    takes handoff.PIPE, tests one of their own); the window starts reading
+    the links sent from outside there. None: don't listen.
     """
 
     def __init__(
@@ -211,7 +214,7 @@ class App:
         folder: Path | None = None,
         files: Files | None = None,
         history: Path | None = None,
-        pipe: str | None = None,
+        listening: handoff.Listening | None = None,
     ) -> None:
         self.root = root
         self.run_download = download
@@ -229,7 +232,7 @@ class App:
         # Cancels sent from outside: the link, and where its answer goes.
         self.cancels: queue.Queue[tuple[str, Future[handoff.Answer]]] = queue.Queue()
         self.next_link_check = ""  # the scheduled check_links()
-        self.listening: handoff.Listening | None = None
+        self.listening = listening
 
         root.title(TITLE)
         # Kept here: Tk drops an image that Python no longer refers to.
@@ -376,11 +379,11 @@ class App:
         self.link_entry.bind("<Return>", lambda _event: self.start_download())
         root.bind("<Destroy>", self.on_destroy)
 
-        # Not when another window listens already: that one gets the links.
-        if pipe is not None:
-            self.listening = handoff.listen(self.received.put, pipe, self.answer_cancel)
-            if self.listening is not None:
-                self.check_links()
+        # The first check from the event loop: a link start() gives the
+        # window comes first, before one sent while it was being built.
+        if listening is not None:
+            listening.start(self.received.put, self.answer_cancel)
+            self.next_link_check = root.after(CHECK_EVERY, self.check_links)
 
     @property
     def busy(self) -> bool:
@@ -572,17 +575,22 @@ class App:
         """Take what was sent from outside since the last check, and check
         again soon. Each link with choices joins the list, in the order
         sent; of the links alone, only the newest goes in the box (it holds
-        one). Then the Cancels, each answered (answer_cancel()) unless it
-        was withdrawn."""
-        link = ""
+        one). A "show" (the app started again, no link) brings the window to
+        the front. Then the Cancels, each answered (answer_cancel()) unless
+        it was withdrawn."""
+        link, show = "", False
         while not self.received.empty():
             message = self.received.get()
-            if message.start is None:
+            if message.show:
+                show = True
+            elif message.start is None:
                 link = message.link
             else:
                 self.add_download(message.link, message.start)
         if link:
-            self.receive_link(link)
+            self.receive_link(link)  # to the front too
+        elif show:
+            bring_to_front(self.root)
         while not self.cancels.empty():
             cancel_link, answer = self.cancels.get()
             if answer.set_running_or_notify_cancel():  # False: withdrawn
@@ -875,13 +883,14 @@ def start(
     folder: Path | None = None,
     files: Files | None = None,
     history: Path | None = None,
-    pipe: str | None = None,
+    listening: handoff.Listening | None = None,
     link: str = "",
     choices: handoff.Choices | None = None,
 ) -> App:
     """Build the window as the user sees it; the GUI test starts it this way
     too. The parameters are App's, and link: put in the box at the start, or
-    with choices, downloading with them at once in a minimized window."""
+    with choices, downloading with them at once in a minimized window (as
+    the first row, before any sent while the window was being built)."""
     if sys.platform == "win32":
         # Without this, Windows scales the window up and the text looks blurry.
         import ctypes
@@ -889,7 +898,7 @@ def start(
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
         # Before the window opens: a taskbar button of its own, with its icon.
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
-    app = App(tk.Tk(), download, folder, files, history, pipe)
+    app = App(tk.Tk(), download, folder, files, history, listening)
     if link and choices is not None:
         app.add_download(link, choices)
         app.root.iconify()
@@ -899,10 +908,11 @@ def start(
 
 
 def main(arguments: list[str] | None = None) -> None:
-    """Open the window. With a link: hand it to the window that is open
-    already, or open one with the link in the box; with --download, to be
-    downloaded at once (a window opened for it starts minimized). arguments:
-    the command line's (default: sys.argv's)."""
+    """Open the window, or with one open already, hand it the link, or with
+    no link bring it to the front, and open none (hand_over()). A link goes
+    in the box; with --download, it is downloaded at once (a window opened
+    for it starts minimized). arguments: the command line's (default:
+    sys.argv's)."""
     parser = argparse.ArgumentParser(
         prog="python -m video_downloader",
         description="Download a video as MP4 or MP3.",
@@ -937,6 +947,24 @@ def main(arguments: list[str] | None = None) -> None:
         if not link:
             parser.error("--download needs a link")
         choices = handoff.Choices(options.download, options.quality, options.subtitles)
-    if link and handoff.send(link, handoff.PIPE, choices):
-        return
-    start(pipe=handoff.PIPE, link=link, choices=choices).root.mainloop()
+    # The pipe first, before the window is built: of two windows started at
+    # once, Windows gives it to one only, and the other hands over.
+    listening = None
+    try:
+        listening = handoff.listen(handoff.PIPE)  # None: can't be made
+    except PermissionError:  # another window has it: that one gets the link
+        if hand_over(link, choices):
+            return
+        # That window was closing: take its pipe, unless it is stuck.
+        with contextlib.suppress(PermissionError):
+            listening = handoff.listen(handoff.PIPE)
+    start(listening=listening, link=link, choices=choices).root.mainloop()
+
+
+def hand_over(link: str, choices: handoff.Choices | None) -> bool:
+    """Hand the link, with the choices if any, to the window that is open,
+    or with no link bring it to the front; False when that fails (it is
+    closing or stuck)."""
+    if link:
+        return handoff.send(link, handoff.PIPE, choices)
+    return handoff.show(handoff.PIPE)

@@ -74,8 +74,9 @@ def test_a_link_goes_to_the_open_window(
     message: object, received: Message, pipe: str
 ) -> None:
     links: queue.Queue[Message] = queue.Queue()
-    listening = handoff.listen(links.put, pipe)
+    listening = handoff.listen(pipe)
     assert listening is not None
+    listening.start(links.put)
     opened = Opened()
     try:
         assert serve(framed(message), pipe, opened) == OK
@@ -110,8 +111,9 @@ def test_a_cancel_goes_to_the_open_window(
         asked.append(link)
         return answer
 
-    listening = handoff.listen(lambda _message: None, pipe, on_cancel)
+    listening = handoff.listen(pipe)
     assert listening is not None
+    listening.start(lambda _message: None, on_cancel)
     opened = Opened()
     try:
         message = {"link": f" {LINK} ", "cancel": True}
@@ -243,7 +245,11 @@ def test_the_window_opened_gets_the_link_and_choices(
 
     monkeypatch.setattr(app, "start", fake_start)
     app.main(host.window_arguments(LINK, start))
-    assert opened == [{"pipe": handoff.PIPE, "link": LINK, "choices": start}]
+    [options] = opened
+    listening = options.pop("listening")
+    assert isinstance(listening, handoff.Listening)
+    listening.close()
+    assert options == {"link": LINK, "choices": start}
 
 
 def test_a_fresh_path_has_the_system_folders_spelled_out() -> None:

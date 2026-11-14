@@ -22,6 +22,7 @@ from typing import NamedTuple
 
 from PIL import ImageGrab
 
+from video_downloader import handoff
 from video_downloader.app import (
     App,
     Files,
@@ -274,7 +275,8 @@ def open_window(
     it doesn't listen. Never handoff.PIPE, or a real link could reach it.
     """
     in_front = user32.GetForegroundWindow()  # the user's window
-    app = start(download, folder, files or FakeFiles(), history, pipe)
+    listening = handoff.listen(pipe) if pipe is not None else None
+    app = start(download, folder, files or FakeFiles(), history, listening)
     root = app.root
     try:
         screen = pick_screen(screens())

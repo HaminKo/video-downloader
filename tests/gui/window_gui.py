@@ -120,9 +120,13 @@ def test_a_sent_link_fills_the_box_and_enter_starts_it(
     to_front: list[tk.Tk] = []
     monkeypatch.setattr("video_downloader.app.bring_to_front", to_front.append)
     type_text(app.link_entry, "half")
-    assert handoff.send(LINK2, pipe), "the window listens on its pipe"
+    # The app started again with no link: the open window to the front.
+    assert handoff.show(pipe), "the window listens on its pipe"
+    wait_until(app, lambda: to_front == [app.root], "the window to the front")
+    assert app.link.get() == "half", "the box stays as it was"
+    assert handoff.send(LINK2, pipe)
     wait_until(app, lambda: app.link.get() == LINK2, "the sent link in the box")
-    assert to_front == [app.root], "the window is brought to the front"
+    assert to_front == [app.root, app.root], "the window is brought to the front"
     assert app.status.get() == LINK_RECEIVED
     assert fake.calls == [], "it waits for Download"
     press(app.link_entry, "Return")

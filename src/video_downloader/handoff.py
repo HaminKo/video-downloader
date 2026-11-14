@@ -7,14 +7,19 @@ list at once).
 The Chrome popup's Cancel goes the same way (cancel()), and the window
 answers it on the same connection: whether it cancelled the link's download.
 
+There is only ever one window: a window takes the pipe before it builds
+anything (listen()), and when another one has it, hands that one its link,
+or with none brings it to the front (show(); app.main()).
+
 A message is UTF-8 JSON: {"link": "https://..."}, or with the choices too,
 {"link": ..., "start": {"kind": "mp3", "quality": "Best", "subtitles": false}},
-or {"link": ..., "cancel": true}; the window's answer to a Cancel is
-{"answer": "cancelled"} or {"answer": "nothing to cancel"}. The Chrome button
-sends its helper the same messages. multiprocessing's send() and recv() are
-never used: they unpickle, which runs whatever the sender packs in, while
-json.loads only reads data. Web pages can't reach a named pipe
-(docs/research/browser-button.md).
+or {"link": ..., "cancel": true}, or {"show": true} (no link: to the front);
+the window's answer to a Cancel is {"answer": "cancelled"} or
+{"answer": "nothing to cancel"}. The Chrome button sends its helper the same
+messages, but never "show" (host.py passes on web links only).
+multiprocessing's send() and recv() are never used: they unpickle, which
+runs whatever the sender packs in, while json.loads only reads data. Web
+pages can't reach a named pipe (docs/research/browser-button.md).
 """
 
 import contextlib
@@ -78,11 +83,17 @@ class Choices:
 @dataclass(frozen=True)
 class Message:
     """A link sent from outside; with choices, to be downloaded with them at
-    once; with cancel, to stop its download; otherwise to go in the box."""
+    once; with cancel, to stop its download; otherwise to go in the box. With
+    show, no link: the window comes to the front."""
 
     link: str
     start: Choices | None = None
     cancel: bool = False
+    show: bool = False
+
+
+# A window started with no link while another one is open sends this.
+SHOW = Message("", show=True)
 
 
 # Gets a Cancel's link in the listener's thread and returns the window's
@@ -91,22 +102,28 @@ OnCancel = Callable[[str], Answer | None]
 
 
 class Listening:
-    """Passes each message sent to the pipe to on_message, in a background
-    thread, and each Cancel's link to on_cancel (None: a Cancel gets no
-    answer), whose answer goes back to the sender; close() stops it."""
+    """Holds the pipe for this window (made by listen()); from start() on,
+    passes each message sent to it to on_message, in a background thread,
+    and each Cancel's link to on_cancel (None: a Cancel gets no answer),
+    whose answer goes back to the sender; close() stops it. What is sent
+    before start() waits in the pipe: the first sender is through at once,
+    the next ones wait for start() (measured, docs/research/browser-button.md)."""
 
-    def __init__(
-        self,
-        pipe: str,
-        on_message: Callable[[Message], None],
-        on_cancel: OnCancel | None = None,
-    ) -> None:
+    def __init__(self, pipe: str) -> None:
         # PermissionError when another window listens on the pipe already.
         self.listener = Listener(pipe, family="AF_PIPE")
         self.pipe = pipe
-        self.on_message = on_message
-        self.on_cancel = on_cancel
+        # Set by start(); nothing is read before it (messages wait in the pipe).
+        self.on_message: Callable[[Message], None] = lambda _message: None
+        self.on_cancel: OnCancel | None = None
         self.closed = False
+        self.thread: threading.Thread | None = None
+
+    def start(
+        self, on_message: Callable[[Message], None], on_cancel: OnCancel | None = None
+    ) -> None:
+        """Start passing the messages on (both called in another thread)."""
+        self.on_message, self.on_cancel = on_message, on_cancel
         self.thread = threading.Thread(target=self.serve, daemon=True)
         self.thread.start()
 
@@ -145,23 +162,23 @@ class Listening:
         if self.closed:
             return
         self.closed = True
+        if self.thread is None:  # never started
+            self.listener.close()
+            return
         with contextlib.suppress(OSError):  # it stopped already
             Client(self.pipe, family="AF_PIPE").close()
         self.thread.join(timeout=1)
 
 
-def listen(
-    on_message: Callable[[Message], None],
-    pipe: str,
-    on_cancel: OnCancel | None = None,
-) -> Listening | None:
-    """Start passing the messages sent to `pipe` to on_message, and the
-    Cancels to on_cancel (both called in another thread). None when it
-    can't: mostly because another window listens there already
-    (PermissionError), which gets the messages then. The window opens either
-    way."""
+def listen(pipe: str) -> Listening | None:
+    """Take `pipe` for this window; its start() passes the messages on.
+    PermissionError when another window listens there already: hand it the
+    link then (send(), show()). None when the pipe can't be made: the window
+    opens all the same, without listening."""
     try:
-        return Listening(pipe, on_message, on_cancel)
+        return Listening(pipe)
+    except PermissionError:
+        raise
     except OSError:
         return None
 
@@ -176,6 +193,17 @@ def send(link: str, pipe: str, start: Choices | None = None) -> bool:
         allow_to_front()
     else:
         message["start"] = dataclasses.asdict(start)
+    return deliver(message, pipe)
+
+
+def show(pipe: str) -> bool:
+    """Bring the window listening on `pipe` to the front; False as send()."""
+    allow_to_front()
+    return deliver({"show": True}, pipe)
+
+
+def deliver(message: dict[str, object], pipe: str) -> bool:
+    """Write the message to the window listening on `pipe`; False as send()."""
     try:
         with Client(pipe, family="AF_PIPE") as connection:
             connection.send_bytes(json.dumps(message).encode("utf-8"))
@@ -228,9 +256,12 @@ def read_message(data: bytes) -> Message | None:
 def checked_message(message: object) -> Message | None:
     """The message as JSON gives it, if it holds a link (text, not empty)
     and, if it has "start" at all, known choices (checked_choices()), or if
-    it has "cancel" at all, true and no "start"; else None."""
+    it has "cancel" at all, true and no "start"; or if it is {"show": true}
+    and nothing else (SHOW); else None."""
     if not isinstance(message, dict):
         return None
+    if "show" in message:
+        return SHOW if message.keys() == {"show"} and message["show"] is True else None
     link = message.get("link")
     if not isinstance(link, str) or not link.strip():
         return None
