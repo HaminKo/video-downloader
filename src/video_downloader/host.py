@@ -1,9 +1,11 @@
 """The Chrome button's helper (the button: extension/). Chrome starts it for
 each click, through the host.bat that `python -m video_downloader.browser
 install` writes, as `python -m video_downloader.host`. It reads the one
-message the button sends, {"link": "https://..."}, hands the link to the
-open window (handoff.py) or opens a window with it, and replies {"ok": true}
-or {"ok": false, "error": "..."}; the button shows the error.
+message the button sends, {"link": "https://..."} or with the choices to
+download it with, {"link": ..., "start": {"kind": "mp3", "quality": "Best",
+"subtitles": false}} (handoff.py checks them). It hands both to the open
+window (handoff.py) or opens a window with them, and replies {"ok": true} or
+{"ok": false, "error": "..."}; the button shows the error.
 
 Native messaging: a message is UTF-8 JSON after its length in 4 bytes (this
 PC's byte order), on stdin and stdout, which Python opens in binary mode on
@@ -25,6 +27,7 @@ from video_downloader import handoff
 
 NOT_A_WEB_PAGE = "Only web pages can be sent."
 BAD_MESSAGE = "The helper couldn't read the message from Chrome."
+BAD_CHOICES = "The helper doesn't know the choices Chrome sent."
 CANT_OPEN = "The app's window couldn't be opened ({error})."
 
 # A message's length: 32 bits, unsigned, in this PC's byte order.
@@ -57,7 +60,7 @@ def read_message(stream: BinaryIO) -> object:
         raise BadMessage
     try:
         return json.loads(data.decode("utf-8"))
-    except ValueError as error:  # not UTF-8, or not JSON
+    except (ValueError, RecursionError) as error:  # not UTF-8 or JSON; too deep
         raise BadMessage from error
 
 
@@ -93,13 +96,26 @@ def fresh_path() -> str:
     return ";".join(parts) or os.environ.get("PATH", "")
 
 
-def start_window(link: str) -> None:
-    """Start the app with the link in its box, without a console, with a
-    fresh PATH (fresh_path). It gets none of Chrome's pipes (DEVNULL), so it
-    lives on after this helper and after Chrome."""
+def window_arguments(link: str, start: handoff.Choices | None) -> list[str]:
+    """The app's command line (`python -m video_downloader ...`) for the link
+    and the choices to download it with, if any. `--` before the link: it
+    never counts as an option."""
+    options = []
+    if start is not None:
+        options = ["--download", start.kind, "--quality", start.quality]
+        if start.subtitles:
+            options.append("--subtitles")
+    return [*options, "--", link]
+
+
+def start_window(link: str, start: handoff.Choices | None) -> None:
+    """Start the app with the link in its box, or downloading it with the
+    choices (window_arguments), without a console, with a fresh PATH
+    (fresh_path). It gets none of Chrome's pipes (DEVNULL), so it lives on
+    after this helper and after Chrome."""
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     subprocess.Popen(
-        [pythonw, "-m", "video_downloader", link],
+        [pythonw, "-m", "video_downloader", *window_arguments(link, start)],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -108,17 +124,23 @@ def start_window(link: str) -> None:
     )
 
 
-def answer(
-    message: object, pipe: str, open_window: Callable[[str], None]
-) -> dict[str, object]:
-    """Hand the message's link to the window listening on pipe, or open a
-    window with it; the reply for the button."""
-    link = web_link(message)
-    if not link:
+# Opens the app's window with a link, and choices to download it with or None.
+OpenWindow = Callable[[str, handoff.Choices | None], None]
+
+
+def answer(message: object, pipe: str, open_window: OpenWindow) -> dict[str, object]:
+    """Hand the message's link, with its choices if any, to the window
+    listening on pipe, or open a window with them; the reply for the
+    button."""
+    if not web_link(message):
         return {"ok": False, "error": NOT_A_WEB_PAGE}
-    if not handoff.send(link, pipe):
+    checked = handoff.checked_message(message)
+    if checked is None:  # the link is fine: the choices aren't
+        return {"ok": False, "error": BAD_CHOICES}
+    link, start = checked.link, checked.start
+    if not handoff.send(link, pipe, start):
         try:
-            open_window(link)
+            open_window(link, start)
         except OSError as error:
             return {"ok": False, "error": CANT_OPEN.format(error=error)}
     return {"ok": True}
@@ -128,7 +150,7 @@ def serve(
     stdin: BinaryIO,
     stdout: BinaryIO,
     pipe: str,
-    open_window: Callable[[str], None] = start_window,
+    open_window: OpenWindow = start_window,
 ) -> None:
     """Read one message, act on it, reply."""
     try:

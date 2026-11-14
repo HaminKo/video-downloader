@@ -1,8 +1,8 @@
 # To do
 
 ## Where we are
-- Now: Nothing open (pick from Someday when one bugs you)
-- Next: To do 16 (Download from Chrome without the window)
+- Now: To do 16, step B (the popup in Chrome)
+- Next: Nothing under Bugs me
 - Updated: 2026-11-14
 
 ## To do
@@ -11,12 +11,12 @@ Next number: 17. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- Nothing here now.
+- To do 16: Download from Chrome without the window (medium; user 2026-11-14): docs/todo/16-chrome-popup.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
 
-- To do 16: Download from Chrome without the window (medium; user 2026-11-14): docs/todo/16-chrome-popup.md
+- Nothing here now.
 
 ### Someday
 Everything else, unordered (grouped by area once it grows). A Someday to-do moves up only when it starts to bug the user.

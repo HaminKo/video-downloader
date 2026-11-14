@@ -10,17 +10,27 @@ import os
 import queue
 import subprocess
 import sys
-from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from video_downloader import browser, handoff, host
+from video_downloader import app, browser, handoff, host
 from video_downloader.browser import EXTENSION_FOLDER, EXTENSION_ID, HOST_NAME
-from video_downloader.host import BAD_MESSAGE, LENGTH, NOT_A_WEB_PAGE
+from video_downloader.handoff import Choices, Message
+from video_downloader.host import BAD_CHOICES, BAD_MESSAGE, LENGTH, NOT_A_WEB_PAGE
 
 LINK = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 OK = {"ok": True}
+START = {"kind": "mp4", "quality": "720p", "subtitles": True}
+
+
+class Opened(list[tuple[str, Choices | None]]):
+    """Stands in for host.start_window: records the windows the helper would
+    open, each a link and its choices."""
+
+    def __call__(self, link: str, start: Choices | None) -> None:
+        self.append((link, start))
 
 
 def framed(message: object) -> bytes:
@@ -29,7 +39,7 @@ def framed(message: object) -> bytes:
     return LENGTH.pack(len(data)) + data
 
 
-def serve(data: bytes, pipe: str, open_window: Callable[[str], None]) -> object:
+def serve(data: bytes, pipe: str, open_window: host.OpenWindow) -> object:
     """Run the helper with data as its stdin; its reply."""
     stdout = io.BytesIO()
     host.serve(io.BytesIO(data), stdout, pipe, open_window)
@@ -51,23 +61,51 @@ def test_a_message_is_its_length_in_4_bytes_then_json() -> None:
     assert host.read_message(io.BytesIO(stream.getvalue())) == {"link": "a"}
 
 
-def test_a_link_goes_to_the_open_window(pipe: str) -> None:
-    links: queue.Queue[str] = queue.Queue()
+@pytest.mark.parametrize(
+    ("message", "received"),
+    [
+        ({"link": LINK}, Message(LINK)),
+        ({"link": LINK, "start": START}, Message(LINK, Choices("mp4", "720p", True))),
+    ],
+    ids=["link", "with choices"],
+)
+def test_a_link_goes_to_the_open_window(
+    message: object, received: Message, pipe: str
+) -> None:
+    links: queue.Queue[Message] = queue.Queue()
     listening = handoff.listen(links.put, pipe)
     assert listening is not None
-    opened: list[str] = []
+    opened = Opened()
     try:
-        assert serve(framed({"link": LINK}), pipe, opened.append) == OK
-        assert links.get(timeout=5) == LINK
+        assert serve(framed(message), pipe, opened) == OK
+        assert links.get(timeout=5) == received
     finally:
         listening.close()
     assert opened == []
 
 
 def test_with_no_window_open_one_opens_with_the_link(pipe: str) -> None:
-    opened: list[str] = []
-    assert serve(framed({"link": f" {LINK} "}), pipe, opened.append) == OK
-    assert opened == [LINK]
+    opened = Opened()
+    assert serve(framed({"link": f" {LINK} "}), pipe, opened) == OK
+    assert serve(framed({"link": LINK, "start": START}), pipe, opened) == OK
+    assert opened == [(LINK, None), (LINK, Choices("mp4", "720p", True))]
+
+
+@pytest.mark.parametrize(
+    "start",
+    [
+        {**START, "kind": "avi"},
+        {**START, "quality": "1080p"},
+        {"kind": "mp3"},
+        "mp3",
+        None,
+    ],
+)
+def test_unknown_choices_get_an_error(start: object, pipe: str) -> None:
+    opened = Opened()
+    reply = serve(framed({"link": LINK, "start": start}), pipe, opened)
+    assert reply == {"ok": False, "error": BAD_CHOICES}
+    assert opened == []
 
 
 @pytest.mark.parametrize(
@@ -82,8 +120,8 @@ def test_with_no_window_open_one_opens_with_the_link(pipe: str) -> None:
     ],
 )
 def test_only_a_web_page_is_sent(message: object, pipe: str) -> None:
-    opened: list[str] = []
-    reply = serve(framed(message), pipe, opened.append)
+    opened = Opened()
+    reply = serve(framed(message), pipe, opened)
     assert reply == {"ok": False, "error": NOT_A_WEB_PAGE}
     assert opened == []
 
@@ -97,16 +135,17 @@ def test_only_a_web_page_is_sent(message: object, pipe: str) -> None:
         LENGTH.pack(handoff.LONGEST + 1) + b"{}",  # longer than a link can be
         LENGTH.pack(5) + b"hello",  # not JSON
         LENGTH.pack(2) + b"\xff\xfe",  # not UTF-8
+        LENGTH.pack(60_000) + b"[" * 60_000,  # too deep for json.loads
     ],
 )
 def test_a_broken_message_gets_an_error(data: bytes, pipe: str) -> None:
-    opened: list[str] = []
-    assert serve(data, pipe, opened.append) == {"ok": False, "error": BAD_MESSAGE}
+    opened = Opened()
+    assert serve(data, pipe, opened) == {"ok": False, "error": BAD_MESSAGE}
     assert opened == []
 
 
 def test_a_window_that_cant_open_gets_an_error(pipe: str) -> None:
-    def cant_open(link: str) -> None:
+    def cant_open(link: str, start: Choices | None) -> None:
         raise FileNotFoundError(2, "The system cannot find the file specified")
 
     reply = serve(framed({"link": LINK}), pipe, cant_open)
@@ -124,15 +163,34 @@ def test_the_window_gets_a_fresh_path(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda command, **options: started.append((command, options)),
     )
     monkeypatch.setattr(host, "fresh_path", lambda: r"C:\Fresh")
-    host.start_window(LINK)
+    host.start_window(LINK, None)
     [(command, options)] = started
     pythonw = Path(sys.executable).with_name("pythonw.exe")
-    assert command == [pythonw, "-m", "video_downloader", LINK]
+    assert command == [pythonw, "-m", "video_downloader", "--", LINK]
     env = options["env"]
     assert isinstance(env, dict)
     assert env["PATH"] == r"C:\Fresh"
     assert env["SYSTEMROOT"] == os.environ["SYSTEMROOT"]  # the rest stays
     assert options["stdout"] == subprocess.DEVNULL
+
+
+@pytest.mark.parametrize(
+    "start", [None, Choices("mp3"), Choices("mp4", "480p", True)], ids=str
+)
+def test_the_window_opened_gets_the_link_and_choices(
+    start: Choices | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The app's command line (app.main()) reads back what the helper puts
+    on it. handoff.PIPE is the test's own (conftest.py): no window listens."""
+    opened: list[dict[str, object]] = []
+
+    def fake_start(**options: object) -> SimpleNamespace:
+        opened.append(options)
+        return SimpleNamespace(root=SimpleNamespace(mainloop=lambda: None))
+
+    monkeypatch.setattr(app, "start", fake_start)
+    app.main(host.window_arguments(LINK, start))
+    assert opened == [{"pipe": handoff.PIPE, "link": LINK, "choices": start}]
 
 
 def test_a_fresh_path_has_the_system_folders_spelled_out() -> None:

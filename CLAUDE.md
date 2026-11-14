@@ -34,7 +34,7 @@ Now and next: the "Where we are" block at the top of docs/todo.md.
 ## Decisions
 One line per decision to follow; reasons, who decided and what was rejected: docs/decisions.md.
 - Build on yt-dlp as a Python library; never write our own site downloaders. Desktop window first, a Chrome button later.
-- Chrome button: an unpacked extension + native messaging (Chrome's HKCU key, written by `python -m video_downloader.browser install`); links reach the open window through a named pipe as plain text (`send_bytes`, never pickle); a link only fills in the box.
+- Chrome button: an unpacked extension + native messaging (Chrome's HKCU key, written by `python -m video_downloader.browser install`); links reach the open window through a named pipe as JSON (`send_bytes` and `json.loads`, never pickle); a link alone fills in the box, a link with choices (`--download mp3`) joins the list without touching the box or the front (a window opened for it starts minimized).
 - Chrome's helper is `host.py` and imports only `handoff`, never yt-dlp (it starts on every click); only web pages are sent; the button shows only failures (a red "!", why in its tooltip).
 - Python 3.13 with tkinter for the window.
 - Deno (yt-dlp's default) is the JavaScript runtime for YouTube, not Node.

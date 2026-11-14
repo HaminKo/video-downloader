@@ -127,6 +127,24 @@ def test_a_sent_link_fills_the_box_and_enter_starts_it(
     finish(app, fake)
 
 
+def test_a_sent_download_joins_the_list_and_leaves_the_box(
+    app: App, fake: FakeDownload, pipe: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What the Chrome popup's Download sends, through the real pipe."""
+    to_front: list[tk.Tk] = []
+    monkeypatch.setattr("video_downloader.app.bring_to_front", to_front.append)
+    type_text(app.link_entry, "half")
+    choices = handoff.Choices("mp4", "720p", True)
+    assert handoff.send(LINK2, pipe, choices), "the window listens on its pipe"
+    wait_for_progress(app, "a sent download")
+    assert fake.calls == [(LINK2, Kind.MP4, app.folder, 720, True)]
+    assert rows(app) == [(TITLES[LINK2], "MP4 720p, subtitles", "Downloading 40%")]
+    assert app.link.get() == "half", "the box stays as it was"
+    assert app.quality.get() == "Best", "the window's choices stay as they were"
+    assert to_front == [], "the window stays where it is"
+    finish(app, fake)
+
+
 def test_download_button_shows_progress_then_done(app: App, fake: FakeDownload) -> None:
     type_text(app.link_entry, LINK)
     click(app.download_button)

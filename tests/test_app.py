@@ -50,6 +50,7 @@ from video_downloader.downloader import (
     Progress,
     Report,
 )
+from video_downloader.handoff import Choices, Message
 
 LINK = "https://example.com/video"
 LINK2 = "https://example.com/second"
@@ -803,6 +804,53 @@ def test_a_link_sent_to_the_pipe_reaches_the_window(
     assert not handoff.send(LINK, pipe), "a closed window stops listening"
 
 
+def test_a_received_download_joins_the_list_and_leaves_the_window_alone(
+    app: App, fake: FakeDownload, tmp_path: Path, to_front: list[tk.Tk]
+) -> None:
+    app.link.set("half a typed link")
+    app.quality_buttons[2].invoke()  # 480p in the window
+    app.received.put(Message(LINK, Choices("mp4", "720p", True)))
+    app.check_links()
+    assert rows(app) == [(LINK, "MP4 720p, subtitles", "Downloading")]
+    assert app.downloads.selection() == app.downloads.get_children(), (
+        "nothing was downloading: it is selected, as with Download"
+    )
+    assert app.link.get() == "half a typed link", "the box stays as it was"
+    assert (app.kind.get(), app.quality.get(), app.subtitles.get()) == (
+        "mp4",
+        "480p",
+        False,
+    ), "the window's choices stay as they were"
+    assert to_front == [], "the window stays where it is"
+    wait_until_done(app)
+    assert fake.calls == [(LINK, Kind.MP4, tmp_path, 720, True)]
+
+
+def test_downloads_received_in_one_check_all_run_in_order(
+    app: App, fake: FakeDownload, to_front: list[tk.Tk]
+) -> None:
+    first = add(app, LINK)  # running: the received ones wait their turn
+    app.received.put(Message(LINK2, Choices("mp3", "720p", True)))
+    app.received.put(Message("https://example.com/box-1"))
+    app.received.put(Message(LINK3, Choices("mp4")))
+    app.received.put(Message("https://example.com/box-2"))
+    app.check_links()
+    assert rows(app) == [
+        (LINK, "MP4", "Downloading"),
+        (LINK2, "MP3", "Waiting"),  # MP3: the quality and subtitles don't count
+        (LINK3, "MP4", "Waiting"),
+    ]
+    assert app.downloads.selection() == (first,), "the running one stays selected"
+    assert app.link.get() == "https://example.com/box-2", "the newest link alone"
+    assert to_front == [app.root], "the link alone brings it to the front"
+    wait_until_done(app)
+    assert [call[:2] + call[3:] for call in fake.calls] == [
+        (LINK, Kind.MP4, None, False),
+        (LINK2, Kind.MP3, None, False),
+        (LINK3, Kind.MP4, None, False),
+    ]
+
+
 def test_start_puts_a_link_in_the_box(
     fake: FakeDownload, files: FakeFiles, tmp_path: Path, to_front: list[tk.Tk]
 ) -> None:
@@ -810,6 +858,24 @@ def test_start_puts_a_link_in_the_box(
     try:
         assert window.link.get() == LINK
         assert window.status.get() == LINK_RECEIVED
+    finally:
+        window.root.destroy()
+
+
+def test_start_with_choices_downloads_in_a_minimized_window(
+    fake: FakeDownload, files: FakeFiles, tmp_path: Path, to_front: list[tk.Tk]
+) -> None:
+    window = start(
+        fake, tmp_path, files, tmp_path / "history.json", None, LINK, Choices("mp3")
+    )
+    try:
+        window.root.update()
+        assert window.root.state() == "iconic"
+        assert rows(window) == [(LINK, "MP3", "Downloading")]
+        assert window.link.get() == "", "not in the box"
+        assert to_front == []
+        wait_until_done(window)
+        assert fake.calls[0][:2] == (LINK, Kind.MP3)
     finally:
         window.root.destroy()
 
@@ -830,15 +896,21 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
 def test_main_hands_a_link_to_the_open_window(
     monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
 ) -> None:
-    sent: list[tuple[str, str]] = []
+    sent: list[tuple[str, str, Choices | None]] = []
 
-    def fake_send(link: str, pipe: str) -> bool:
-        sent.append((link, pipe))
+    def fake_send(link: str, pipe: str, start: Choices | None = None) -> bool:
+        sent.append((link, pipe, start))
         return True
 
     monkeypatch.setattr(handoff, "send", fake_send)
     main([f" {LINK} "])
-    assert sent == [(LINK, handoff.PIPE)]
+    main([LINK, "--download", "mp4", "--quality", "720p", "--subtitles"])
+    main(["--download", "mp3", LINK])
+    assert sent == [
+        (LINK, handoff.PIPE, None),
+        (LINK, handoff.PIPE, Choices("mp4", "720p", True)),
+        (LINK, handoff.PIPE, Choices("mp3", "Best", False)),
+    ]
     assert opened == [], "no second window"
 
 
@@ -847,15 +919,34 @@ def test_main_opens_a_window_with_the_link_when_none_is_open(
 ) -> None:
     # handoff.PIPE is the test's own (conftest.py): no window listens there.
     main([LINK])
-    assert opened == [{"pipe": handoff.PIPE, "link": LINK}]
+    main([LINK, "--download", "mp3"])
+    assert opened == [
+        {"pipe": handoff.PIPE, "link": LINK, "choices": None},
+        {"pipe": handoff.PIPE, "link": LINK, "choices": Choices("mp3")},
+    ]
 
 
 def test_main_without_a_link_opens_an_empty_window(
     monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
 ) -> None:
-    def fake_send(link: str, pipe: str) -> bool:
+    def fake_send(link: str, pipe: str, start: Choices | None = None) -> bool:
         raise AssertionError("nothing to send")
 
     monkeypatch.setattr(handoff, "send", fake_send)
     main([])
-    assert opened == [{"pipe": handoff.PIPE, "link": ""}]
+    assert opened == [{"pipe": handoff.PIPE, "link": "", "choices": None}]
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [["--download", "mp3"], [LINK, "--download", "avi"], [LINK, "--quality", "1080p"]],
+)
+def test_main_refuses_a_download_without_a_link_or_known_choices(
+    arguments: list[str],
+    opened: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        main(arguments)
+    assert opened == []
+    assert "error" in capsys.readouterr().err

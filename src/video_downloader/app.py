@@ -8,7 +8,10 @@ with the past downloads from the history file.
 
 A link sent from outside (`python -m video_downloader LINK`, or the Chrome
 button's helper, host.py) goes into the link box of the window that is open
-already, through a named pipe (handoff.py); it doesn't start by itself."""
+already, through a named pipe (handoff.py); it doesn't start by itself. A
+link sent with the choices to download it with (`--download mp3`) joins the
+list instead, and leaves the box, the window's choices and its place alone;
+with no window open, one opens minimized with it downloading."""
 
 import argparse
 import json
@@ -51,11 +54,9 @@ NO_SUBTITLES = "No English subtitles found."
 GONE = "Can't play {name}: it isn't in {folder} anymore."
 LINK_RECEIVED = "Link received: choose MP4 or MP3, then Download."
 
-# The video quality choices and their limit as the downloader takes it (720
-# for 720p). "Best" (None) is the best that plays everywhere: 1080p on
-# YouTube, whose H.264 stops there, so a 1080p choice would give the same
-# file (docs/research/yt-dlp-library.md "Quality").
-QUALITIES: dict[str, int | None] = {"Best": None, "720p": 720, "480p": 480}
+# The video quality choices and their limit as the downloader takes it
+# (handoff.py, which the Chrome button's helper shares them from).
+QUALITIES = handoff.QUALITIES
 
 # Failures are shown in dark red, everything else in the normal text color.
 FAILED_COLOR = "#a00000"
@@ -132,6 +133,15 @@ class Job:
         return self.title or self.link, what, state
 
 
+def new_job(link: str, choices: handoff.Choices) -> Job:
+    """A waiting row for the link with the choices; the quality and subtitles
+    count for MP4 only."""
+    kind = Kind(choices.kind)
+    mp4 = kind == Kind.MP4
+    height = QUALITIES[choices.quality] if mp4 else None
+    return Job(link, kind, height, choices.subtitles and mp4)
+
+
 class Files:
     """Opens files and folders for the user; the tests pass a fake, so nothing
     opens."""
@@ -196,7 +206,7 @@ class App:
         self.events: queue.Queue[Event] = queue.Queue()
         self.next_check = ""  # the scheduled check_events(), while busy
         self.next_fit = ""  # the scheduled fit_height()
-        self.links: queue.Queue[str] = queue.Queue()  # sent from outside
+        self.received: queue.Queue[handoff.Message] = queue.Queue()  # from outside
         self.next_link_check = ""  # the scheduled check_links()
         self.listening: handoff.Listening | None = None
 
@@ -341,7 +351,7 @@ class App:
 
         # Not when another window listens already: that one gets the links.
         if pipe is not None:
-            self.listening = handoff.listen(self.links.put, pipe)
+            self.listening = handoff.listen(self.received.put, pipe)
             if self.listening is not None:
                 self.check_links()
 
@@ -358,16 +368,17 @@ class App:
         if not link:
             self.show_status(PASTE_A_LINK)
             return
-        kind = Kind(self.kind.get())
-        mp4 = kind == Kind.MP4  # the quality and subtitles are for MP4 only
-        job = Job(
-            link,
-            kind,
-            QUALITIES[self.quality.get()] if mp4 else None,
-            self.subtitles.get() and mp4,
+        choices = handoff.Choices(
+            self.kind.get(), self.quality.get(), self.subtitles.get()
         )
-        self.add_row(job)
         self.link.set("")
+        self.add_download(link, choices)
+
+    def add_download(self, link: str, choices: handoff.Choices) -> None:
+        """Add the link to the list with the choices. It starts at once, its
+        row selected, when nothing is downloading, otherwise when the
+        downloads above it have ended."""
+        self.add_row(new_job(link, choices))
         if self.busy:
             self.update_states()
         else:
@@ -487,11 +498,17 @@ class App:
             self.next_check = self.root.after(CHECK_EVERY, self.check_events)
 
     def check_links(self) -> None:
-        """Take the newest link sent from outside since the last check (the
-        box holds one), and check again soon."""
+        """Take what was sent from outside since the last check, and check
+        again soon. Each link with choices joins the list, in the order
+        sent; of the links alone, only the newest goes in the box (it holds
+        one)."""
         link = ""
-        while not self.links.empty():
-            link = self.links.get()
+        while not self.received.empty():
+            message = self.received.get()
+            if message.start is None:
+                link = message.link
+            else:
+                self.add_download(message.link, message.start)
         if link:
             self.receive_link(link)
         self.next_link_check = self.root.after(CHECK_EVERY, self.check_links)
@@ -784,24 +801,30 @@ def start(
     history: Path | None = None,
     pipe: str | None = None,
     link: str = "",
+    choices: handoff.Choices | None = None,
 ) -> App:
     """Build the window as the user sees it; the GUI test starts it this way
-    too. The parameters are App's, and link: put in the box at the start."""
+    too. The parameters are App's, and link: put in the box at the start, or
+    with choices, downloading with them at once in a minimized window."""
     if sys.platform == "win32":
         # Without this, Windows scales the window up and the text looks blurry.
         import ctypes
 
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     app = App(tk.Tk(), download, folder, files, history, pipe)
-    if link:
+    if link and choices is not None:
+        app.add_download(link, choices)
+        app.root.iconify()
+    elif link:
         app.receive_link(link)
     return app
 
 
 def main(arguments: list[str] | None = None) -> None:
     """Open the window. With a link: hand it to the window that is open
-    already, or open one with the link in the box. arguments: the command
-    line's (default: sys.argv's)."""
+    already, or open one with the link in the box; with --download, to be
+    downloaded at once (a window opened for it starts minimized). arguments:
+    the command line's (default: sys.argv's)."""
     parser = argparse.ArgumentParser(
         prog="python -m video_downloader",
         description="Download a video as MP4 or MP3.",
@@ -812,7 +835,30 @@ def main(arguments: list[str] | None = None) -> None:
         default="",
         help="put this link in the box (of the window that is open, if one is)",
     )
-    link = parser.parse_args(arguments).link.strip()
-    if link and handoff.send(link, handoff.PIPE):
+    parser.add_argument(
+        "--download",
+        choices=handoff.KINDS,
+        help="download the link at once, as MP4 or MP3, instead of putting it "
+        "in the box (in a minimized window, if none is open)",
+    )
+    parser.add_argument(
+        "--quality",
+        choices=handoff.QUALITIES,
+        default="Best",
+        help="the video quality, for --download mp4 (default: Best)",
+    )
+    parser.add_argument(
+        "--subtitles",
+        action="store_true",
+        help="English subtitles too, for --download mp4",
+    )
+    options = parser.parse_args(arguments)
+    link = options.link.strip()
+    choices = None
+    if options.download:
+        if not link:
+            parser.error("--download needs a link")
+        choices = handoff.Choices(options.download, options.quality, options.subtitles)
+    if link and handoff.send(link, handoff.PIPE, choices):
         return
-    start(pipe=handoff.PIPE, link=link).root.mainloop()
+    start(pipe=handoff.PIPE, link=link, choices=choices).root.mainloop()
