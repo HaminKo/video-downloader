@@ -14,14 +14,14 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, i
 - A file that is already there isn't downloaded again; the window says so.
 - **Play** opens the selected row's file in your default player (VLC also picks up the subtitles next to it); double-clicking a finished row does the same. **Show in folder** opens the Videos folder with that file selected. Both work while another download runs. Nothing opens by itself. When the selected row has no file (waiting, running, failed or cancelled), Play is greyed out and Show in folder just opens the folder.
 - **Cancel** stops the running download (the next waiting one then starts): its row says "Cancelled" and the window deletes what that download had saved (half-downloaded pieces, and its subtitles); files that were in the folder before are never touched (a half-downloaded file left by closing the window included). While ffmpeg joins video and audio or converts to MP3, Cancel takes effect when that step is done. Closing the window also stops a download, but leaves the half-downloaded file, which yt-dlp continues from if you download the same video again.
-- **A link from outside:** `python -m video_downloader LINK` (with the `.venv` active) puts the link in the box of the window that is open, replacing what was there, and brings that window to the front, also when it was minimized; with no window open, it opens one with the link in the box. It never starts the download: choose MP4 or MP3, then press Download. The line under the list says "Link received" until the selected row's next progress replaces it. With two windows open, the first one opened gets the links. The [Chrome button](#the-chrome-button) does the same with one click. If Windows doesn't let the window come to the front, its taskbar button flashes instead.
-- **Downloading a link from outside at once:** `python -m video_downloader LINK --download mp3` (or `--download mp4`, with `--quality 720p` or `--quality 480p` and `--subtitles` if wanted; without them Best and no subtitles) adds the link to the list of the window that is open, with those choices, as if you had chosen them and pressed Download. The window stays where it is, and its link box and its own choices stay as they were. With no window open, one opens minimized on the taskbar with the download running. `python -m video_downloader --help` lists the options.
+- **A link from outside:** `python -m video_downloader LINK` (with the `.venv` active) puts the link in the box of the window that is open, replacing what was there, and brings that window to the front, also when it was minimized; with no window open, it opens one with the link in the box. It never starts the download: choose MP4 or MP3, then press Download. The line under the list says "Link received" until the selected row's next progress replaces it. With two windows open, the first one opened gets the links. The [Chrome button](#the-chrome-button)'s "Open in the window instead" does the same. If Windows doesn't let the window come to the front, its taskbar button flashes instead.
+- **Downloading a link from outside at once:** `python -m video_downloader LINK --download mp3` (or `--download mp4`, with `--quality 720p` or `--quality 480p` and `--subtitles` if wanted; without them Best and no subtitles) adds the link to the list of the window that is open, with those choices, as if you had chosen them and pressed Download. The window stays where it is, and its link box and its own choices stay as they were. With no window open, one opens minimized on the taskbar with the download running. `python -m video_downloader --help` lists the options. The [Chrome button](#the-chrome-button)'s Download does the same.
 - A link to a playlist or channel downloads only its first video, and the window says so.
 - When a download fails, the line under the bar says why in plain words, in red: not a link, a site or page with no video, no internet, a private or removed video, one that needs signing in, or ffmpeg missing. Anything else shows yt-dlp's own message. yt-dlp's full message is also printed in the terminal the app runs from.
 - Reddit only gives a post's video to people who are signed in. To sign in, you export Reddit's sign-in from your browser once, as a file the app uses: see [Signing in](signing-in.md). The app doesn't sign in to YouTube (it could get the account banned).
 
 ## The Chrome button
-A button in Chrome's toolbar that sends the page you're on to the app: on a YouTube video, click it, and the app comes to the front with the link in the box (or opens with it), the same as a link from outside above. Then choose MP4 or MP3 and press Download.
+A button in Chrome's toolbar that downloads the video on the page you're on, without leaving Chrome: on a YouTube video, click it, choose MP4 or MP3 (and for a video its quality and English subtitles) in the small window that opens, and press Download (or Enter). The app adds the video to its list and downloads it, while its window stays where it is; with the app closed, it opens minimized on the taskbar. Progress, Cancel and the finished file are in the app's window, as for any download.
 
 **Setting it up**, once (in PowerShell, in the project folder, with the `.venv` active):
 1. Install the helper Chrome starts for each click:
@@ -32,14 +32,18 @@ A button in Chrome's toolbar that sends the page you're on to the app: on a YouT
 2. In Chrome, open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked** and choose the `extension` folder in the project folder. Check that the ID under Video Downloader is the one the command printed.
 3. Pin the button: click the puzzle piece in Chrome's toolbar, then the pin next to Video Downloader.
 
-**Using it:** click the button on a page with a video. Nothing shows in Chrome when it works; the app coming to the front is the sign. A red **!** on the button means the link didn't reach the app; point at the button to see why:
-- "Only web pages can be sent": the New Tab page, Chrome's own pages (`chrome://`) and files opened from disk can't be sent.
-- "The helper isn't installed": run the install command from step 1.
-- Anything else is Chrome's own message, for example when the helper can't start.
+**Using it:** click the button on a page with a video. The small window has the app's choices; it remembers the last ones you picked (its own, apart from the app's window). After Download it says "Added to Video Downloader." and closes by itself. **Open in the window instead** sends only the link: the app comes to the front with the link in its box (or opens with it), the same as a link from outside above, for when you want to look first.
 
-The **!** goes away at the next click that works.
+When it doesn't work, the small window says why in red and stays open, so you can try again:
+- "Only web pages can be sent": shown at once on the New Tab page, Chrome's own pages (`chrome://`) and files opened from disk; Download is greyed out there.
+- "The helper isn't installed": run the install command from step 1.
+- Anything else is the app's or Chrome's own message, for example when the helper can't start.
+
+Nothing shows in Chrome when a download ends, or fails later on (a private video, say): the app's window shows it.
 
 **After moving the project or making the `.venv` anew**, run the install command again, and in `chrome://extensions` click the reload arrow under Video Downloader (or load it again from the new folder). The helper runs the project's Python, and Chrome loads the button from the project folder.
+
+**After updating the app**, click the reload arrow under Video Downloader in `chrome://extensions`: Chrome keeps the button it loaded until then.
 
 **Removing it:**
 ```powershell

@@ -19,7 +19,7 @@ from pathlib import Path
 
 from video_downloader.downloader import DATA_FOLDER
 
-# Chrome's name for the helper; extension/background.js uses it too.
+# Chrome's name for the helper; extension/popup.js uses it too.
 HOST_NAME = "video_downloader"
 
 # The extension's ID, fixed by the "key" in extension/manifest.json (a test

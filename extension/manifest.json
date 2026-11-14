@@ -1,15 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Video Downloader",
-  "version": "1.0",
-  "description": "Send the page you're on to the Video Downloader app on this PC.",
+  "version": "1.1",
+  "description": "Download the video on the page you're on with the Video Downloader app on this PC.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwg2L+IIhB4utJOzIn7u+yK7/74/wQ2Yv0LgdVVIk/fy3H31NybzOkyEMvKCqlglqefHAz359fQVjeMlGYau2UezD47uvRtMVQxrT2WuuWkdXYl9GRsiudc1J59UaPtcl2tycechl1WNbNmY7YY8yGeHzkqgMFHEIY4RrdTatllyN6EzHq2WwL7NeY4i/YuWap5bretIb+tPglxTG0JoMIMz3iJy742XetzHLxQC9CKKc4Wfsubv5rWo6MmDr+z0GI5MNyZlRCPkn+0AY4uKOuW3qHNFGvM+ma+6SM6Cjc48KQ+nSAiaXA058eMUp3KkKiaufQIy5OYNs936Ipu+E4wIDAQAB",
-  "permissions": ["nativeMessaging", "activeTab"],
-  "background": {
-    "service_worker": "background.js"
-  },
+  "permissions": ["nativeMessaging", "activeTab", "storage"],
   "action": {
-    "default_title": "Send this page to Video Downloader",
+    "default_title": "Download this page's video with Video Downloader",
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/16.png",
       "32": "icons/32.png",

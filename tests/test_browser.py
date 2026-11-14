@@ -8,6 +8,7 @@ import io
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -265,10 +266,20 @@ def test_host_bat_answers_chrome_through_cmd(tmp_path: Path) -> None:
 
 
 def test_the_extension_matches_the_helper() -> None:
-    """Its key gives EXTENSION_ID, and it calls the helper by HOST_NAME."""
+    """Its key gives EXTENSION_ID; the popup calls the helper by HOST_NAME,
+    offers the choices handoff.py takes, in the window's order, and checks
+    for web pages with the helper's words. What the popup does with them:
+    tests/gui/popup_gui.py."""
     manifest = json.loads(
         (EXTENSION_FOLDER / "manifest.json").read_text(encoding="utf-8")
     )
     assert extension_id(manifest["key"]) == EXTENSION_ID
-    script = (EXTENSION_FOLDER / "background.js").read_text(encoding="utf-8")
-    assert f'const HOST = "{HOST_NAME}";' in script
+    assert manifest["action"]["default_popup"] == "popup.html"
+    script = (EXTENSION_FOLDER / "popup.js").read_text(encoding="utf-8")
+    assert f"const HOST = {json.dumps(HOST_NAME)};" in script
+    assert f"const NOT_A_WEB_PAGE = {json.dumps(NOT_A_WEB_PAGE)};" in script
+    page = (EXTENSION_FOLDER / "popup.html").read_text(encoding="utf-8")
+    kinds = re.findall(r'name="kind" value="([^"]*)"', page)
+    qualities = re.findall(r'name="quality" value="([^"]*)"', page)
+    assert tuple(kinds) == handoff.KINDS
+    assert qualities == list(handoff.QUALITIES)

@@ -1,11 +1,14 @@
-"""Screenshots of the window, for Claude to read.
+"""Screenshots of the window and of the Chrome button's popup, for Claude to
+read.
 
     python tests/gui/screenshots.py           every screen
     python tests/gui/screenshots.py done      one screen by name
 
 Saved to the temp folder (video-downloader-screenshots), never the project;
 prints each file's path. The window pops up on top for a moment, on another
-screen if there is one (drive.py), without taking the keyboard.
+screen if there is one (drive.py), without taking the keyboard. The popup is
+drawn by headless Chrome (popup.py), at the main screen's scaling; nothing
+shows.
 """
 
 import sys
@@ -14,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
+import popup
 from drive import (
     LINK,
     LINK2,
@@ -23,6 +27,7 @@ from drive import (
     click,
     open_window,
     press,
+    screens,
     screenshot,
     type_text,
     wait_until,
@@ -106,13 +111,31 @@ SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
 # The screens whose window opens with past downloads; the others with none.
 WITH_HISTORY = {"history"}
 
+# The Chrome button's popup: on a video's page, and on the New Tab page.
+POPUP_SCREENS: dict[str, popup.Case] = {
+    "popup": {"url": LINK},
+    "popup-error": {"url": None},
+}
+
+
+def popup_screenshot(name: str) -> Path:
+    main_dpi = next((screen.dpi for screen in screens() if screen.main), 96)
+    SCREENSHOT_DIR.mkdir(exist_ok=True)
+    path = SCREENSHOT_DIR / f"{name}.png"
+    popup.screenshot(POPUP_SCREENS[name], path, scale=main_dpi / 96)
+    return path
+
 
 def main(names: list[str]) -> int:
-    unknown = [name for name in names if name not in SCREENS]
+    known = [*SCREENS, *POPUP_SCREENS]
+    unknown = [name for name in names if name not in known]
     if unknown:
-        print(f"Unknown screen: {', '.join(unknown)}. Screens: {', '.join(SCREENS)}")
+        print(f"Unknown screen: {', '.join(unknown)}. Screens: {', '.join(known)}")
         return 2
-    for name in names or SCREENS:
+    for name in names or known:
+        if name in POPUP_SCREENS:
+            print(popup_screenshot(name))
+            continue
         fake = FakeDownload()
         # A history of its own, so the real one is never read or changed.
         with tempfile.TemporaryDirectory() as data:

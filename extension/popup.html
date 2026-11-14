@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Video Downloader</title>
+<style>
+  body {
+    width: 300px;
+    margin: 0;
+    padding: 12px 14px;
+    font: 13px "Segoe UI", system-ui, sans-serif;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  fieldset {
+    margin: 0 0 8px;
+    padding: 0;
+    border: 0;
+  }
+  label {
+    margin-right: 10px;
+    white-space: nowrap;
+  }
+  .row {
+    margin-bottom: 4px;
+  }
+  /* MP3: the video's quality and subtitles don't count. */
+  fieldset:disabled {
+    color: #8a8a8a;
+  }
+  .buttons {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 12px;
+  }
+  #download {
+    padding: 4px 18px;
+    font: inherit;
+  }
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #2563eb;
+    text-decoration: underline;
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .link:disabled {
+    color: #8a8a8a;
+    cursor: default;
+  }
+  #status {
+    min-height: 1.4em;
+    margin: 10px 0 0;
+  }
+  #status.error {
+    color: #b00000;
+  }
+</style>
+</head>
+<body>
+<form id="choices">
+  <fieldset>
+    <label><input type="radio" name="kind" value="mp4" id="mp4" checked> Video (MP4)</label>
+    <label><input type="radio" name="kind" value="mp3" id="mp3"> Audio only (MP3)</label>
+  </fieldset>
+  <fieldset id="video">
+    <div class="row">
+      Video quality:
+      <label><input type="radio" name="quality" value="Best" id="quality-best" checked> Best</label>
+      <label><input type="radio" name="quality" value="720p" id="quality-720p"> 720p</label>
+      <label><input type="radio" name="quality" value="480p" id="quality-480p"> 480p</label>
+    </div>
+    <label><input type="checkbox" name="subtitles" id="subtitles"> English subtitles</label>
+  </fieldset>
+  <div class="buttons">
+    <button type="submit" id="download" disabled>Download</button>
+    <button type="button" id="open" class="link" disabled>Open in the window instead</button>
+  </div>
+  <p id="status" role="status"></p>
+</form>
+<script src="popup.js"></script>
+</body>
+</html>
