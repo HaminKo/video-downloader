@@ -1,9 +1,11 @@
 """Handing a link, alone or with the choices to download it with, to the
-open window through a named pipe."""
+open window through a named pipe; and a Cancel, which the window answers."""
 
 import contextlib
 import json
 import queue
+import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from multiprocessing.connection import Client, Connection
@@ -13,11 +15,15 @@ import pytest
 from video_downloader import handoff
 from video_downloader.handoff import (
     LONGEST,
+    Answer,
     Choices,
     Listening,
     Message,
+    OnCancel,
+    cancel,
     checked_message,
     listen,
+    read_answer,
     send,
 )
 
@@ -26,11 +32,13 @@ START = {"kind": "mp4", "quality": "720p", "subtitles": True}
 
 
 @contextmanager
-def window(pipe: str) -> Iterator[tuple[Listening, queue.Queue[Message]]]:
+def window(
+    pipe: str, on_cancel: OnCancel | None = None
+) -> Iterator[tuple[Listening, queue.Queue[Message]]]:
     """Listen on `pipe` as an open window does; the messages it gets go into
-    the queue."""
+    the queue, its Cancels to on_cancel."""
     links: queue.Queue[Message] = queue.Queue()
-    listening = listen(links.put, pipe)
+    listening = listen(links.put, pipe, on_cancel)
     assert listening is not None, "nothing else listens on a test's own pipe"
     try:
         yield listening, links
@@ -78,16 +86,26 @@ def test_a_message_is_json(monkeypatch: pytest.MonkeyPatch) -> None:
         def send_bytes(self, data: bytes) -> None:
             sent.append(data)
 
+        def poll(self, timeout: float) -> bool:
+            return False  # no answer
+
     allowed: list[bytes] = []  # sent when the window was let to the front
     monkeypatch.setattr(handoff, "Client", lambda *_a, **_k: FakeConnection())
     monkeypatch.setattr(handoff, "allow_to_front", lambda: allowed.append(b""))
     assert send(LINK, "pipe")
     assert send(LINK, "pipe", Choices("mp4", "720p", True))
+    assert cancel(LINK, "pipe") is Answer.NO_ANSWER
     assert [json.loads(data) for data in sent] == [
         {"link": LINK},
         {"link": LINK, "start": START},
+        {"link": LINK, "cancel": True},
     ]
     assert len(allowed) == 1, "only a link alone brings the window to the front"
+
+
+def test_a_cancel_message_holds_a_link() -> None:
+    message = {"link": f" {LINK} ", "cancel": True}
+    assert checked_message(message) == Message(LINK, cancel=True)
 
 
 @pytest.mark.parametrize(
@@ -101,6 +119,11 @@ def test_a_message_is_json(monkeypatch: pytest.MonkeyPatch) -> None:
         {"link": LINK, "start": {"kind": "mp3"}},  # all three are always sent
         {"link": LINK, "start": "mp3"},
         {"link": LINK, "start": None},  # not the same as no "start"
+        {"link": LINK, "cancel": False},
+        {"link": LINK, "cancel": "yes"},
+        {"link": LINK, "cancel": True, "start": START},  # which one?
+        {"link": "  ", "cancel": True},
+        {"cancel": True},
         {"link": "   "},
         {"link": 5},
         {"start": START},
@@ -126,6 +149,77 @@ def test_a_window_closing_while_sending_counts_as_none(
 
     monkeypatch.setattr(handoff, "Client", closing)
     assert not send(LINK, pipe), "the caller opens a window of its own"
+    assert cancel(LINK, pipe) is Answer.NO_ANSWER
+
+
+@pytest.mark.parametrize("answer", [Answer.CANCELLED, Answer.NOTHING])
+def test_a_cancel_gets_the_windows_answer(answer: Answer, pipe: str) -> None:
+    asked: list[str] = []
+
+    def on_cancel(link: str) -> Answer:
+        asked.append(link)
+        return answer
+
+    with window(pipe, on_cancel) as (_, links):
+        assert cancel(LINK, pipe) is answer
+        assert asked == [LINK]
+        assert send(LINK, pipe), "it goes on listening"
+        assert links.get(timeout=2) == Message(LINK), "the Cancel isn't a link"
+        assert links.empty()
+
+
+def test_without_an_open_window_a_cancel_says_so(pipe: str) -> None:
+    assert cancel(LINK, pipe) is Answer.NOT_OPEN
+
+
+@pytest.mark.parametrize(
+    "on_cancel", [None, lambda _link: None], ids=["no on_cancel", "none in time"]
+)
+def test_a_window_that_doesnt_answer_a_cancel(
+    on_cancel: OnCancel | None, pipe: str
+) -> None:
+    """It hangs up without answering: the sender knows at once."""
+    with window(pipe, on_cancel):
+        started = time.monotonic()
+        assert cancel(LINK, pipe) is Answer.NO_ANSWER
+        assert time.monotonic() - started < 1, "not the full wait"
+
+
+def test_a_window_too_slow_to_answer_a_cancel(
+    monkeypatch: pytest.MonkeyPatch, pipe: str
+) -> None:
+    """The sender gives up; the late answer then finds it gone, and the
+    window goes on listening."""
+    monkeypatch.setattr(handoff, "WAIT_FOR_ANSWER", 0.2)
+    answered = threading.Event()
+
+    def slow(_link: str) -> Answer:
+        time.sleep(0.6)
+        answered.set()
+        return Answer.CANCELLED
+
+    with window(pipe, slow) as (_, links):
+        assert cancel(LINK, pipe) is Answer.NO_ANSWER
+        assert answered.wait(timeout=5)
+        assert send(LINK, pipe)
+        assert links.get(timeout=2) == Message(LINK)
+
+
+@pytest.mark.parametrize(
+    ("data", "answer"),
+    [
+        (b'{"answer": "cancelled"}', Answer.CANCELLED),
+        (b'{"answer": "nothing to cancel"}', Answer.NOTHING),
+        (b'{"answer": "not open"}', Answer.NO_ANSWER),  # not the window's to say
+        (b'{"answer": "maybe"}', Answer.NO_ANSWER),
+        (b'{"answer": ["cancelled"]}', Answer.NO_ANSWER),
+        (b'"cancelled"', Answer.NO_ANSWER),
+        (b"\xff\xfe", Answer.NO_ANSWER),
+        (b"[" * 60_000, Answer.NO_ANSWER),
+    ],
+)
+def test_only_a_known_answer_counts(data: bytes, answer: Answer) -> None:
+    assert read_answer(data) is answer
 
 
 def test_a_pipe_that_cant_be_made_means_no_listening() -> None:
@@ -168,6 +262,15 @@ def test_junk_is_dropped(pipe: str, junk: bytes) -> None:
         assert send(LINK, pipe), "it goes on listening"
         assert links.get(timeout=2) == Message(LINK), "the junk never arrives"
         assert links.empty()
+
+
+def test_a_sender_that_hangs_up_before_sending(pipe: str) -> None:
+    """For example the helper, ended by Chrome right after connecting: the
+    window reads EOFError, and must go on listening."""
+    with window(pipe) as (_, links):
+        Client(pipe, family="AF_PIPE").close()
+        assert send(LINK, pipe)
+        assert links.get(timeout=2) == Message(LINK)
 
 
 class RunsWhenUnpickled:

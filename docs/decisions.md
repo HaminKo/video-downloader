@@ -2,6 +2,19 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: Cancel from the Chrome popup; the window answers on the pipe
+- **Decision:** the popup has "Cancel this page's download" (a link-style button on its own line under Download), always shown, greyed out with the others on pages that aren't web pages. It sends `{"link": ..., "cancel": true}` through the helper to the open window, which answers on the same connection: `{"answer": "cancelled"}` or `{"answer": "nothing to cancel"}`. The window stops every row of exactly that link that hasn't ended: the running one as its own Cancel does, waiting ones become Cancelled rows that are skipped. The selection and the window's place stay as they were. The pipe's thread hands the Cancel to Tk's thread (a `Future` through a queue, taken by `check_links()`) and waits up to 2 s; if Tk's thread hasn't taken it by then, it is withdrawn, so it never happens after the sender was told "no answer". The helper waits up to 5 s and never opens a window for a Cancel. The popup says "Cancelled." and closes after 1.5 s, or says in red: "Nothing to cancel: ...", "Video Downloader isn't open.", "Video Downloader didn't answer.". After a failure the focus goes back to the button that was used (Download, Open or Cancel), so Enter after a failed Cancel doesn't download.
+- **Reason:** the user wanted to cancel without opening the window. Stopping only this tab's link can't stop the wrong video; an answer lets the popup say what happened instead of "sent". A plain "Cancel" next to Download would read as "close this popup".
+- **Who decided:** the user, on Claude's suggestions (To do 19, answers a-h, 2026-11-14).
+- **Rejected:**
+  - cancelling whatever is downloading now: it could stop another video than the one on the page
+  - showing Cancel only when the window has the page's video: a round trip to the window each time the popup opens
+  - taking a waiting video off the list (as Remove does): the window then wouldn't show what happened
+  - a separate message for a finished video ("downloaded already"): one "Nothing to cancel" covers not in the list, finished and failed
+  - fire-and-forget Cancel (about 60 lines less, estimate): the popup couldn't say whether it worked
+  - `{"cancel": LINK}` as the message: with `"link"` kept, the helper's web-page check and handoff's link check apply unchanged
+- **Left as is:** with two windows open, only the one that listens gets the Cancel (To do 17). If Tk's thread takes the Cancel in the very moment the 2 s run out, the sender hears "no answer" though it cancelled.
+
 ## 2026-11-14: The window uses the Chrome button's icon, with a taskbar ID of its own
 - **Decision:** `App.__init__` loads extension/icons' four PNGs (16, 32, 48, 128 px) and calls `root.iconphoto(True, ...)`, which sets the title bar, taskbar and Alt+Tab icon; `start()` calls `SetCurrentProcessExplicitAppUserModelID("VideoDownloader.App")` before the window opens. No .ico file yet.
 - **Reason:** since To do 16 a download from Chrome opens the window minimized, so the taskbar button is all you see of it. Without the ID, the window joined the pinned Python button and showed Python's icon (measured on this PC); with it, the window gets a button of its own with the blue arrow. Reading the extension's PNGs keeps one copy of the icon. Tk passes Windows the 32 px image, scaled to 24 px in the title bar at 150%; it looks clean in the screenshot (docs/research/window-icon.md).

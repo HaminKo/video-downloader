@@ -37,6 +37,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - Build on yt-dlp as a Python library; never write our own site downloaders. Desktop window first, a Chrome button later.
 - Chrome button: an unpacked extension + native messaging (Chrome's HKCU key, written by `python -m video_downloader.browser install`); links reach the open window through a named pipe as JSON (`send_bytes` and `json.loads`, never pickle); a link alone fills in the box, a link with choices (`--download mp3`) joins the list without touching the box or the front (a window opened for it starts minimized).
 - Chrome's helper is `host.py` and imports only `handoff`, never yt-dlp (it starts on every click); only web pages are sent; the button opens a popup with the window's choices (its own, kept in `chrome.storage.local`) that says when it worked or, in red, why not.
+- The popup's Cancel: `{"link", "cancel": true}`, answered by the window on the same connection; it cancels every unfinished row of exactly that link (waiting ones become Cancelled), leaves the selection, and never opens a window.
 - Python 3.13 with tkinter for the window.
 - Deno (yt-dlp's default) is the JavaScript runtime for YouTube, not Node.
 - Reddit needs signing in (it blocks anyone not signed in); curl_cffi was tried and doesn't help.

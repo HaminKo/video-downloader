@@ -5,7 +5,10 @@ message the button sends, {"link": "https://..."} or with the choices to
 download it with, {"link": ..., "start": {"kind": "mp3", "quality": "Best",
 "subtitles": false}} (handoff.py checks them). It hands both to the open
 window (handoff.py) or opens a window with them, and replies {"ok": true} or
-{"ok": false, "error": "..."}; the button shows the error.
+{"ok": false, "error": "..."}; the button shows the error. The popup's
+Cancel sends {"link": ..., "cancel": true}: the helper asks the open window
+to cancel that link's download and replies with how it went; with no window
+open, it opens none.
 
 Native messaging: a message is UTF-8 JSON after its length in 4 bytes (this
 PC's byte order), on stdin and stdout, which Python opens in binary mode on
@@ -29,6 +32,15 @@ NOT_A_WEB_PAGE = "Only web pages can be sent."
 BAD_MESSAGE = "The helper couldn't read the message from Chrome."
 BAD_CHOICES = "The helper doesn't know the choices Chrome sent."
 CANT_OPEN = "The app's window couldn't be opened ({error})."
+
+# What the popup shows when a Cancel didn't cancel (handoff.cancel()).
+CANCEL_ERRORS = {
+    handoff.Answer.NOTHING: (
+        "Nothing to cancel: Video Downloader isn't downloading this page."
+    ),
+    handoff.Answer.NOT_OPEN: "Video Downloader isn't open.",
+    handoff.Answer.NO_ANSWER: "Video Downloader didn't answer.",
+}
 
 # A message's length: 32 bits, unsigned, in this PC's byte order.
 LENGTH = struct.Struct("=I")
@@ -130,14 +142,19 @@ OpenWindow = Callable[[str, handoff.Choices | None], None]
 
 def answer(message: object, pipe: str, open_window: OpenWindow) -> dict[str, object]:
     """Hand the message's link, with its choices if any, to the window
-    listening on pipe, or open a window with them; the reply for the
-    button."""
+    listening on pipe, or open a window with them; for a Cancel, ask that
+    window to cancel the link's download. The reply for the button."""
     if not web_link(message):
         return {"ok": False, "error": NOT_A_WEB_PAGE}
     checked = handoff.checked_message(message)
-    if checked is None:  # the link is fine: the choices aren't
+    if checked is None:  # the link is fine: the choices (or Cancel) aren't
         return {"ok": False, "error": BAD_CHOICES}
     link, start = checked.link, checked.start
+    if checked.cancel:
+        how = handoff.cancel(link, pipe)
+        if how is handoff.Answer.CANCELLED:
+            return {"ok": True}
+        return {"ok": False, "error": CANCEL_ERRORS[how]}
     if not handoff.send(link, pipe, start):
         try:
             open_window(link, start)

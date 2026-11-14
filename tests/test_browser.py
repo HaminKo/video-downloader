@@ -18,7 +18,7 @@ import pytest
 
 from video_downloader import app, browser, handoff, host
 from video_downloader.browser import EXTENSION_FOLDER, EXTENSION_ID, HOST_NAME
-from video_downloader.handoff import Choices, Message
+from video_downloader.handoff import Answer, Choices, Message
 from video_downloader.host import BAD_CHOICES, BAD_MESSAGE, LENGTH, NOT_A_WEB_PAGE
 
 LINK = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -85,6 +85,50 @@ def test_a_link_goes_to_the_open_window(
     assert opened == []
 
 
+@pytest.mark.parametrize(
+    ("answer", "reply"),
+    [
+        (Answer.CANCELLED, OK),
+        (
+            Answer.NOTHING,
+            {
+                "ok": False,
+                "error": "Nothing to cancel: "
+                "Video Downloader isn't downloading this page.",
+            },
+        ),
+        (None, {"ok": False, "error": "Video Downloader didn't answer."}),
+    ],
+    ids=["cancelled", "nothing", "no answer"],
+)
+def test_a_cancel_goes_to_the_open_window(
+    answer: Answer | None, reply: dict[str, object], pipe: str
+) -> None:
+    asked: list[str] = []
+
+    def on_cancel(link: str) -> Answer | None:
+        asked.append(link)
+        return answer
+
+    listening = handoff.listen(lambda _message: None, pipe, on_cancel)
+    assert listening is not None
+    opened = Opened()
+    try:
+        message = {"link": f" {LINK} ", "cancel": True}
+        assert serve(framed(message), pipe, opened) == reply
+    finally:
+        listening.close()
+    assert asked == [LINK]
+    assert opened == []
+
+
+def test_with_no_window_open_a_cancel_opens_none(pipe: str) -> None:
+    opened = Opened()
+    reply = serve(framed({"link": LINK, "cancel": True}), pipe, opened)
+    assert reply == {"ok": False, "error": "Video Downloader isn't open."}
+    assert opened == []
+
+
 def test_with_no_window_open_one_opens_with_the_link(pipe: str) -> None:
     opened = Opened()
     assert serve(framed({"link": f" {LINK} "}), pipe, opened) == OK
@@ -105,6 +149,14 @@ def test_with_no_window_open_one_opens_with_the_link(pipe: str) -> None:
 def test_unknown_choices_get_an_error(start: object, pipe: str) -> None:
     opened = Opened()
     reply = serve(framed({"link": LINK, "start": start}), pipe, opened)
+    assert reply == {"ok": False, "error": BAD_CHOICES}
+    assert opened == []
+
+
+@pytest.mark.parametrize("cancel", ["yes", False, None])
+def test_a_cancel_that_isnt_true_gets_an_error(cancel: object, pipe: str) -> None:
+    opened = Opened()
+    reply = serve(framed({"link": LINK, "cancel": cancel}), pipe, opened)
     assert reply == {"ok": False, "error": BAD_CHOICES}
     assert opened == []
 

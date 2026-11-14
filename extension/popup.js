@@ -2,8 +2,10 @@
 // quality, English subtitles) and Download, which sends the tab's link with
 // them to the app's helper on this PC (native messaging, host.py); the app
 // adds it to its list and downloads it. "Open in the window instead" sends
-// the link alone, which goes into the window's link box. The popup keeps its
-// own last choices (chrome.storage.local), apart from the window's.
+// the link alone, which goes into the window's link box. "Cancel this page's
+// download" asks the open window to stop the tab's link (or not start it),
+// and says whether it did. The popup keeps its own last choices
+// (chrome.storage.local), apart from the window's.
 //
 // Tested in headless Chrome with Chrome's functions faked:
 // tests/gui/popup_gui.py.
@@ -17,8 +19,10 @@ const NOT_INSTALLED =
 const NO_ANSWER = "The helper gave no answer.";
 const SENDING = "Sending...";
 const ADDED = "Added to Video Downloader.";
+const CANCELLED = "Cancelled.";
 
-// How long "Added" shows before the popup closes, in milliseconds.
+// How long "Added" or "Cancelled" shows before the popup closes, in
+// milliseconds.
 const CLOSE_AFTER = 1500;
 
 // The choices until some are kept: the window's own when it opens.
@@ -28,6 +32,7 @@ const form = document.getElementById("choices");
 const video = document.getElementById("video"); // the quality and subtitles
 const download = document.getElementById("download");
 const openWindow = document.getElementById("open");
+const cancel = document.getElementById("cancel");
 const status = document.getElementById("status");
 
 // The tab's link; "" until it is known, or when Chrome gives none.
@@ -61,8 +66,9 @@ function say(text, isError = false) {
 }
 
 function canSend(yes) {
-  download.disabled = !yes;
-  openWindow.disabled = !yes;
+  for (const button of [download, openWindow, cancel]) {
+    button.disabled = !yes;
+  }
 }
 
 // The same check as the helper's (host.web_link), so the popup can say it
@@ -82,22 +88,25 @@ async function problemSending(message) {
   }
 }
 
-// Send the link, with the choices to download it with or (start null) alone.
-// The popup closes only after the helper's answer: closing it would end
-// this script, and with it the message.
-async function send(start) {
+// Send the message to the helper with the button that was used. Once the
+// helper took it, the popup says `done` and closes after CLOSE_AFTER, or
+// with `done` null closes at once. It closes only after the helper's answer:
+// closing it would end this script, and with it the message.
+async function send(message, button, done) {
   canSend(false); // at once, so a double click sends once
   say(SENDING);
-  const problem = await problemSending(start ? { link, start } : { link });
+  const problem = await problemSending(message);
   if (problem) {
     say(problem, true);
     canSend(true);
-    download.focus(); // greying it out took the focus: Enter tries again
-  } else if (start) {
-    say(ADDED);
+    // Greying it out took the focus: Enter tries the same again (after a
+    // failed Cancel, Enter mustn't download).
+    button.focus();
+  } else if (done) {
+    say(done);
     setTimeout(() => window.close(), CLOSE_AFTER);
   } else {
-    window.close(); // the window comes to the front with the link
+    window.close();
   }
 }
 
@@ -108,10 +117,15 @@ form.addEventListener("change", () => {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault(); // Download, or Enter
-  send(choices());
+  send({ link, start: choices() }, download, ADDED);
 });
 
-openWindow.addEventListener("click", () => send(null));
+// The link alone: the window comes to the front with it in its box.
+openWindow.addEventListener("click", () => send({ link }, openWindow, null));
+
+cancel.addEventListener("click", () =>
+  send({ link, cancel: true }, cancel, CANCELLED),
+);
 
 async function start() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

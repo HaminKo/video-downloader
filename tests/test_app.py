@@ -15,6 +15,7 @@ from video_downloader import handoff
 from video_downloader.app import (
     CANCELLED,
     CANCELLING,
+    CHECK_EVERY,
     FAILED_COLOR,
     GONE,
     HISTORY_SIZE,
@@ -50,7 +51,7 @@ from video_downloader.downloader import (
     Progress,
     Report,
 )
-from video_downloader.handoff import Choices, Message
+from video_downloader.handoff import Answer, Choices, Message
 
 LINK = "https://example.com/video"
 LINK2 = "https://example.com/second"
@@ -856,6 +857,126 @@ def test_downloads_received_in_one_check_all_run_in_order(
         (LINK2, Kind.MP3, None, False),
         (LINK3, Kind.MP4, None, False),
     ]
+
+
+def test_a_cancel_from_outside_stops_its_link_only(
+    app: App, fake: FakeDownload
+) -> None:
+    """The running one as Cancel does; waiting ones, also one in the list
+    twice, become Cancelled and are skipped. Other links and the selection
+    stay as they were."""
+    fake.wait_for_cancel = {LINK}
+    add(app, LINK)
+    add(app, LINK2)
+    app.mp3_button.invoke()
+    add(app, LINK2)  # the same page again, as MP3
+    other = add(app, LINK3)
+    select(app, other)
+
+    def states() -> list[State]:
+        return [job.state for job in app.jobs.values()]
+
+    assert app.cancel_link(LINK2) is Answer.CANCELLED
+    assert states() == [
+        State.DOWNLOADING,
+        State.CANCELLED,
+        State.CANCELLED,
+        State.WAITING,
+    ]
+    assert app.cancel_link(LINK) is Answer.CANCELLED
+    assert states()[0] is State.CANCELLING
+    assert app.downloads.selection() == (other,), "unlike the Cancel button"
+    assert app.cancel_link(LINK) is Answer.CANCELLED, "it is cancelling already"
+    wait_until_done(app)
+    assert [call[0] for call in fake.calls] == [LINK, LINK3]
+    assert [row[2] for row in rows(app)] == [
+        "Cancelled",
+        "Cancelled",
+        "Cancelled",
+        "Done",
+    ]
+    select(app, app.downloads.get_children()[1])
+    assert app.status.get() == CANCELLED
+
+
+def test_a_cancel_from_outside_with_nothing_to_cancel(
+    app: App, fake: FakeDownload
+) -> None:
+    assert app.cancel_link(LINK) is Answer.NOTHING, "an empty list"
+    fake.results[LINK2] = [Failed("It broke.")]
+    add(app, LINK)
+    add(app, LINK2)
+    wait_until_done(app)
+    assert app.cancel_link(LINK) is Answer.NOTHING, "done: the file stays"
+    assert app.cancel_link(LINK2) is Answer.NOTHING, "failed"
+    assert app.cancel_link(LINK3) is Answer.NOTHING, "not in the list"
+    assert [row[2] for row in rows(app)] == ["Done", "Failed"]
+
+
+@contextmanager
+def listening_window(
+    fake: FakeDownload, files: FakeFiles, folder: Path, pipe: str
+) -> Iterator[App]:
+    """A hidden window that listens on `pipe`."""
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        window = App(root, fake, folder, files, pipe=pipe)
+        assert window.listening is not None
+        yield window
+    finally:
+        root.destroy()
+
+
+def run_for(app: App, seconds: float) -> None:
+    """Let the window run, as its mainloop would."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        app.root.update()
+        time.sleep(0.01)
+
+
+def test_a_cancel_sent_to_the_pipe_gets_the_windows_answer(
+    fake: FakeDownload, files: FakeFiles, tmp_path: Path, pipe: str
+) -> None:
+    fake.wait_for_cancel = {LINK}
+    with listening_window(fake, files, tmp_path, pipe) as window:
+        add(window, LINK)
+        answers: list[Answer] = []
+
+        def cancel_two() -> None:  # as the helper does, from another process
+            answers.append(handoff.cancel(LINK, pipe))
+            answers.append(handoff.cancel(LINK2, pipe))
+
+        sender = threading.Thread(target=cancel_two)
+        sender.start()
+        deadline = time.monotonic() + 5
+        while sender.is_alive():
+            assert time.monotonic() < deadline, "the window never answered"
+            run_for(window, 0.01)
+        assert answers == [Answer.CANCELLED, Answer.NOTHING]
+        wait_until_done(window)
+        assert rows(window)[0][2] == "Cancelled"
+
+
+def test_a_cancel_the_window_cant_answer_in_time_is_withdrawn(
+    fake: FakeDownload,
+    files: FakeFiles,
+    tmp_path: Path,
+    pipe: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sender is told "no answer", so the Cancel mustn't happen later."""
+    monkeypatch.setattr("video_downloader.app.ANSWER_WITHIN", 0.2)
+    fake.wait_for_cancel = {LINK}
+    with listening_window(fake, files, tmp_path, pipe) as window:
+        row = add(window, LINK)
+        # The window doesn't run meanwhile: it is stuck.
+        assert handoff.cancel(LINK, pipe) is Answer.NO_ANSWER
+        run_for(window, 3 * CHECK_EVERY / 1000)  # it runs again
+        assert window.jobs[row].state is State.DOWNLOADING
+        window.cancel_button.invoke()
+        wait_until_done(window)
 
 
 def test_start_puts_a_link_in_the_box(

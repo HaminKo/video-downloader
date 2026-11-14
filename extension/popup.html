@@ -52,6 +52,10 @@
     color: #8a8a8a;
     cursor: default;
   }
+  #cancel {
+    display: block;
+    margin-top: 8px;
+  }
   #status {
     min-height: 1.4em;
     margin: 10px 0 0;
@@ -80,6 +84,7 @@
     <button type="submit" id="download" disabled>Download</button>
     <button type="button" id="open" class="link" disabled>Open in the window instead</button>
   </div>
+  <button type="button" id="cancel" class="link" disabled>Cancel this page's download</button>
   <p id="status" role="status"></p>
 </form>
 <script src="popup.js"></script>

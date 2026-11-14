@@ -6,6 +6,7 @@ windows pop up on top, on another screen if there is one (drive.py). A fake
 download stands in for yt-dlp, so nothing touches the internet.
 """
 
+import threading
 import tkinter as tk
 from collections.abc import Iterator
 from pathlib import Path
@@ -146,6 +147,25 @@ def test_a_sent_download_joins_the_list_and_leaves_the_box(
     assert app.quality.get() == "Best", "the window's choices stay as they were"
     assert to_front == [], "the window stays where it is"
     finish(app, fake)
+
+
+def test_a_sent_cancel_stops_that_download(
+    app: App, fake: FakeDownload, pipe: str
+) -> None:
+    """What the Chrome popup's Cancel sends, through the real pipe; the
+    window answers while it runs."""
+    assert handoff.send(LINK2, pipe, handoff.Choices("mp4"))
+    wait_for_progress(app, "a sent download")
+    answers: list[handoff.Answer] = []
+    sender = threading.Thread(
+        target=lambda: answers.append(handoff.cancel(LINK2, pipe))
+    )
+    sender.start()
+    wait_until(app, lambda: not sender.is_alive(), "the window's answer")
+    assert answers == [handoff.Answer.CANCELLED]
+    wait_until(app, lambda: not app.busy, "the download to stop")
+    assert rows(app) == [(TITLES[LINK2], "MP4", "Cancelled")]
+    assert app.status.get() == CANCELLED
 
 
 def test_download_button_shows_progress_then_done(app: App, fake: FakeDownload) -> None:

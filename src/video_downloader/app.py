@@ -11,7 +11,9 @@ button's helper, host.py) goes into the link box of the window that is open
 already, through a named pipe (handoff.py); it doesn't start by itself. A
 link sent with the choices to download it with (`--download mp3`) joins the
 list instead, and leaves the box, the window's choices and its place alone;
-with no window open, one opens minimized with it downloading."""
+with no window open, one opens minimized with it downloading. A Cancel sent
+(the Chrome popup's) stops that link's download, and the window answers
+whether it did."""
 
 import argparse
 import json
@@ -23,6 +25,7 @@ import threading
 import tkinter as tk
 import traceback
 from collections.abc import Callable, Iterable
+from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -79,6 +82,11 @@ WIDTH = 600
 # How often the window checks for news from the download, and for links sent
 # from outside, in milliseconds.
 CHECK_EVERY = 100
+
+# How long the pipe's thread waits for the window's answer to a Cancel sent
+# from outside, in seconds; shorter than the sender waits
+# (handoff.WAIT_FOR_ANSWER). Taking it takes up to CHECK_EVERY.
+ANSWER_WITHIN = 2.0
 
 # How many rows the list of downloads shows; it scrolls for more.
 LIST_ROWS = 6
@@ -218,6 +226,8 @@ class App:
         self.next_check = ""  # the scheduled check_events(), while busy
         self.next_fit = ""  # the scheduled fit_height()
         self.received: queue.Queue[handoff.Message] = queue.Queue()  # from outside
+        # Cancels sent from outside: the link, and where its answer goes.
+        self.cancels: queue.Queue[tuple[str, Future[handoff.Answer]]] = queue.Queue()
         self.next_link_check = ""  # the scheduled check_links()
         self.listening: handoff.Listening | None = None
 
@@ -368,7 +378,7 @@ class App:
 
         # Not when another window listens already: that one gets the links.
         if pipe is not None:
-            self.listening = handoff.listen(self.received.put, pipe)
+            self.listening = handoff.listen(self.received.put, pipe, self.answer_cancel)
             if self.listening is not None:
                 self.check_links()
 
@@ -459,18 +469,62 @@ class App:
         report(Failed(NO_END))  # dropped when it has ended already
 
     def cancel_download(self) -> None:
-        """Ask the running download to stop, and select its row. It reports
-        Cancelled once it has stopped and deleted what it had saved: at once
-        while downloading, after the step while ffmpeg joins or converts. One
-        that finishes before it notices reports Done as usual: the file is
-        there. The next waiting link starts then."""
+        """Cancel: stop the running download (stop_running()) and select its
+        row."""
+        if self.stop_running():
+            self.select(self.running)
+
+    def stop_running(self) -> bool:
+        """Ask the running download to stop; False when none is downloading
+        (or it is stopping already). It reports Cancelled once it has stopped
+        and deleted what it had saved: at once while downloading, after the
+        step while ffmpeg joins or converts. One that finishes before it
+        notices reports Done as usual: the file is there. The next waiting
+        link starts then."""
         job = self.jobs.get(self.running)
         if job is None or job.state is not State.DOWNLOADING:
-            return
+            return False
         self.cancel.set()
         job.state, job.message, job.percent = State.CANCELLING, CANCELLING, None
-        self.select(self.running)
         self.update_row(self.running)
+        return True
+
+    def cancel_link(self, link: str) -> handoff.Answer:
+        """A Cancel sent from outside (the Chrome popup): stop the link's
+        running download as Cancel does, and mark its waiting ones
+        Cancelled, so they are skipped. Every row of the link counts (it can
+        be in the list twice, as MP4 and as MP3); one that has ended stays as
+        it is. The selection stays too: the window is left alone, as with a
+        download sent from outside."""
+        rows = [
+            row
+            for row, job in self.jobs.items()
+            if job.link == link and job.state not in ENDED
+        ]
+        for row in rows:
+            job = self.jobs[row]
+            if job.state is State.WAITING:
+                job.state, job.message = State.CANCELLED, CANCELLED
+                self.update_row(row)
+            elif row == self.running:
+                self.stop_running()  # nothing to do while it is cancelling
+        return handoff.Answer.CANCELLED if rows else handoff.Answer.NOTHING
+
+    def answer_cancel(self, link: str) -> handoff.Answer | None:
+        """A Cancel sent from outside, in the pipe's thread: hand it to the
+        window's thread (check_links(), as Tk is used from that thread only)
+        and wait for its answer. None when it doesn't come within
+        ANSWER_WITHIN seconds (the window is stuck or closing): the Cancel is
+        withdrawn then, so it doesn't happen after the sender was told "no
+        answer"."""
+        answer: Future[handoff.Answer] = Future()
+        self.cancels.put((link, answer))
+        try:
+            return answer.result(timeout=ANSWER_WITHIN)
+        except TimeoutError:
+            # Withdrawn, unless the window's thread took it this very moment.
+            answer.cancel()
+            return None
 
     def check_events(self) -> None:
         """Show what the running download reported since the last check; when
@@ -518,7 +572,8 @@ class App:
         """Take what was sent from outside since the last check, and check
         again soon. Each link with choices joins the list, in the order
         sent; of the links alone, only the newest goes in the box (it holds
-        one)."""
+        one). Then the Cancels, each answered (answer_cancel()) unless it
+        was withdrawn."""
         link = ""
         while not self.received.empty():
             message = self.received.get()
@@ -528,6 +583,10 @@ class App:
                 self.add_download(message.link, message.start)
         if link:
             self.receive_link(link)
+        while not self.cancels.empty():
+            cancel_link, answer = self.cancels.get()
+            if answer.set_running_or_notify_cancel():  # False: withdrawn
+                answer.set_result(self.cancel_link(cancel_link))
         self.next_link_check = self.root.after(CHECK_EVERY, self.check_links)
 
     def receive_link(self, link: str) -> None:

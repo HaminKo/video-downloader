@@ -14,7 +14,7 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, i
 - Files go to the **Videos** folder inside your Downloads folder: MP4s that play everywhere (H.264 video with AAC sound), or MP3s.
 - Click a row in the list to see its progress or message. **Play** and **Show in folder** open its file, **Remove** takes it out of the list (never deletes a file), and **Cancel** stops the running download.
 - When a download fails, the window says why in plain words. Reddit needs a sign-in file: see [Signing in](docs/signing-in.md).
-- A button in Chrome downloads the video on the page you're on, as MP4 or MP3, without leaving Chrome: see [The Chrome button](docs/using.md#the-chrome-button).
+- A button in Chrome downloads the video on the page you're on, as MP4 or MP3, without leaving Chrome, and can cancel it again: see [The Chrome button](docs/using.md#the-chrome-button).
 
 Everything in detail: [Using the app](docs/using.md).
 

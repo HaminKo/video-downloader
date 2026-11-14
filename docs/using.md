@@ -22,7 +22,7 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, i
 - Reddit only gives a post's video to people who are signed in. To sign in, you export Reddit's sign-in from your browser once, as a file the app uses: see [Signing in](signing-in.md). The app doesn't sign in to YouTube (it could get the account banned).
 
 ## The Chrome button
-A button in Chrome's toolbar that downloads the video on the page you're on, without leaving Chrome: on a YouTube video, click it, choose MP4 or MP3 (and for a video its quality and English subtitles) in the small window that opens, and press Download (or Enter). The app adds the video to its list and downloads it, while its window stays where it is; with the app closed, it opens minimized on the taskbar. Progress, Cancel and the finished file are in the app's window, as for any download.
+A button in Chrome's toolbar that downloads the video on the page you're on, without leaving Chrome: on a YouTube video, click it, choose MP4 or MP3 (and for a video its quality and English subtitles) in the small window that opens, and press Download (or Enter). The app adds the video to its list and downloads it, while its window stays where it is; with the app closed, it opens minimized on the taskbar. Progress and the finished file are in the app's window, as for any download; the small window can also cancel it.
 
 **Setting it up**, once (in PowerShell, in the project folder, with the `.venv` active):
 1. Install the helper Chrome starts for each click:
@@ -35,9 +35,14 @@ A button in Chrome's toolbar that downloads the video on the page you're on, wit
 
 **Using it:** click the button on a page with a video. The small window has the app's choices; it remembers the last ones you picked (its own, apart from the app's window). After Download it says "Added to Video Downloader." and closes by itself. **Open in the window instead** sends only the link: the app comes to the front with the link in its box (or opens with it), the same as a link from outside above, for when you want to look first.
 
+**Cancel this page's download** stops the video of the page you're on in the app, the same as the app's Cancel (what it had saved is deleted), or, if it's still waiting its turn, makes sure it won't start. Its row in the app says Cancelled, and the small window says "Cancelled." and closes. Only the page's own link counts, as it was when you pressed Download; a page you added twice (as MP4 and as MP3) has both rows cancelled. The app's window stays where it is, and Cancel never opens it.
+
 When it doesn't work, the small window says why in red and stays open, so you can try again:
-- "Only web pages can be sent": shown at once on the New Tab page, Chrome's own pages (`chrome://`) and files opened from disk; Download is greyed out there.
+- "Only web pages can be sent": shown at once on the New Tab page, Chrome's own pages (`chrome://`) and files opened from disk; the buttons are greyed out there.
 - "The helper isn't installed": run the install command from step 1.
+- "Nothing to cancel": the app isn't downloading this page and it isn't waiting either (it isn't in the list, or it has finished or failed already).
+- "Video Downloader isn't open": Cancel with the app closed.
+- "Video Downloader didn't answer": the app was busy or closing; try again.
 - Anything else is the app's or Chrome's own message, for example when the helper can't start.
 
 Nothing shows in Chrome when a download ends, or fails later on (a private video, say): the app's window shows it.
