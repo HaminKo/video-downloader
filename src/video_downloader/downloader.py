@@ -1,11 +1,13 @@
 """Download one video with yt-dlp, as MP4 (in a chosen quality, optionally
-with English subtitles) or MP3; a download can be cancelled.
+with English subtitles) or MP3; a download can be cancelled. It deletes only
+files it saved itself, and only inside its folder (deletable()).
 
 The window runs download() in a background thread. It hears what happens
 only through `report`: Progress events while it runs, then exactly one Done,
 Failed or Cancelled.
 """
 
+import contextlib
 import copy
 import gc
 import io
@@ -21,7 +23,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yt_dlp
-from yt_dlp.utils import DownloadCancelled, DownloadError, UnavailableVideoError
+from yt_dlp.cookies import CookieLoadError
+from yt_dlp.utils import DownloadCancelled
 
 if TYPE_CHECKING:
     # yt-dlp's settings as pyright knows them (its bundled yt-dlp stubs).
@@ -202,6 +205,36 @@ type Event = Progress | Done | Failed | Cancelled
 type Report = Callable[[Event], None]
 
 
+class Log:
+    """yt-dlp's `logger`: keeps its errors, and prints its warnings and
+    errors to the terminal as yt-dlp does without one. With `ignoreerrors`
+    (options()) the errors are how download() learns why a video failed
+    (docs/research/yt-dlp-library.md "Playlists and channels")."""
+
+    def __init__(self) -> None:
+        self.errors: list[str] = []
+
+    @property
+    def first(self) -> str:
+        """The first error, which without `ignoreerrors` yt-dlp would have
+        raised as a DownloadError with this same text; "" with none."""
+        return self.errors[0] if self.errors else ""
+
+    def debug(self, message: str) -> None:
+        """What yt-dlp prints while it works: left out, as with `quiet`."""
+
+    def warning(self, message: str) -> None:
+        print(f"WARNING: {message}", file=sys.stderr)
+
+    def error(self, message: str) -> None:
+        # Everything yt-dlp prints to stderr comes here, but only its errors
+        # start with "ERROR:" (others: a bare "\r", "Deprecated Feature: ...").
+        # Plain text only while options() turns colors off.
+        print(message, file=sys.stderr)
+        if message.startswith("ERROR:"):
+            self.errors.append(message)
+
+
 def default_folder() -> Path:
     """Videos inside the user's Downloads folder."""
     return Path.home() / "Downloads" / "Videos"
@@ -264,6 +297,10 @@ def options(
             # whole playlist or channel gets its first video only.
             "noplaylist": True,
             "playlist_items": "1",
+            # The command line's default: a video that fails doesn't end the
+            # download, so a playlist's other videos still come. Errors then
+            # reach the app only through download()'s Log.
+            "ignoreerrors": "only_download",
             # The window shows the progress. Warnings and errors still go to the
             # terminal, without color codes, which would end up in error messages.
             "quiet": True,
@@ -294,15 +331,19 @@ def download(
     and `subtitles` as in options(). Setting `cancel` stops the download at
     yt-dlp's next report: within a second while downloading, after the step
     while ffmpeg joins or converts."""
+    # The form of the paths yt-dlp reports (it normalizes them with
+    # os.path.normpath), so that they compare equal to the folder's own.
+    folder = Path(os.path.abspath(folder))
     saved: list[Path] = []
-    # The names of the files this download saves start with these
-    # (note_names()); a cancelled download deletes them.
-    prefixes: set[str] = set()
-    # The folder's file names before the download. Taken before yt-dlp
-    # starts, so before any hook can add a prefix.
-    there_before: set[str] = set()
+    # The files this download saves are these paths plus the rest of their
+    # names (note_names()); a cancelled download deletes them.
+    prefixes: set[Path] = set()
+    # What was in the folder before the download (paths_in()). Taken before
+    # yt-dlp starts, so before any hook can add a prefix.
+    there_before: set[Path] = set()
     # The files an MP3 was converted from (remove_mp3_sources()).
     mp3_sources: set[Path] = set()
+    log = Log()
 
     def stop_if_cancelled(status: Mapping[str, Any]) -> None:
         # yt-dlp has no stop call: this error from a hook is its own way
@@ -343,41 +384,49 @@ def download(
         settings["progress_hooks"] = [on_progress]
         settings["postprocessor_hooks"] = [on_step]
         settings["post_hooks"] = [lambda path: saved.append(Path(path))]
+        # yt-dlp calls only debug, warning and error (read in the source);
+        # its type stub asks for more.
+        settings["logger"] = log  # pyright: ignore[reportGeneralTypeIssues]
         folder.mkdir(parents=True, exist_ok=True)
         # yt-dlp doesn't say whether it skipped a file that was already there,
         # and its progress reports can't tell either: downloads it hands to
         # ffmpeg report only "finished" (docs/research/yt-dlp-library.md).
-        there_before = {path.name for path in folder.iterdir()}
+        there_before = paths_in(folder)
         with yt_dlp.YoutubeDL(settings) as ydl:
             # Not ydl.download(), which doesn't say whether it was a playlist.
-            # It did turn UnavailableVideoError (an OSError while saving, such
-            # as a full disk) into a DownloadError; the next line does that now.
+            # None when the link itself failed (`ignoreerrors`).
             info = ydl.extract_info(link)
     except DownloadCancelled:
         # Cleaned up below: until this block has ended, the error holds on to
         # files yt-dlp still has open.
         cancelled = True
-    except (DownloadError, UnavailableVideoError) as error:
-        report(Failed(plain_message(str(error), signed_in)))
+    except CookieLoadError as error:
+        # With `ignoreerrors`, the one failure that still raises: a broken
+        # sign-in file, whose reason yt-dlp logs first. The others, also an
+        # OSError while saving (such as a full disk), are only logged.
+        report(Failed(plain_message(log.first or str(error), signed_in)))
     except Exception as error:  # the window must always hear that it ended
         report(Failed(f"Something went wrong: {error}"))
     else:
         if saved:
             video = saved[-1]
-            remove_mp3_sources(mp3_sources, video, there_before)
+            remove_mp3_sources(mp3_sources, video, there_before, folder)
             report(
                 Done(
                     video,
-                    already_there=video.name in there_before,
-                    playlist=info.get("_type") == "playlist"
+                    already_there=video in there_before,
+                    playlist=info is not None
+                    and info.get("_type") == "playlist"
                     and info.get("playlist_count") != 1,
-                    # yt-dlp's name for them; it only warns in the terminal
-                    # when there are none in English.
+                    # yt-dlp's name for them. It doesn't say when there are
+                    # none in English (only on screen, which `quiet` hides).
                     no_subtitles=subtitles
                     and kind == Kind.MP4
                     and not video.with_suffix(".en.srt").is_file(),
                 )
             )
+        elif log.first:
+            report(Failed(plain_message(log.first, signed_in)))
         else:
             report(Failed("Nothing was downloaded from this link."))
     if cancelled:
@@ -387,49 +436,93 @@ def download(
             report(Cancelled())
 
 
-def note_names(status: Mapping[str, Any], prefixes: set[str]) -> None:
-    """Add to `prefixes` how the names of the files a hook's `status` is
-    about start. Every file of a video starts with its file name without the
-    extension, then a dot: Title.f137.mp4.part, Title.temp.mp4, Title.en.srt.
-    A subtitle download's status doesn't have that name, but its own:
-    Title.en.vtt (docs/research/yt-dlp-library.md "Cancelling")."""
+def note_names(status: Mapping[str, Any], prefixes: set[Path]) -> None:
+    """Add to `prefixes` how the paths of the files a hook's `status` is
+    about start: their folder, and how their names start. Every file of a
+    video starts with its file name without the extension, then a dot:
+    Title.f137.mp4.part, Title.temp.mp4, Title.en.srt. A subtitle download's
+    status doesn't have that name, but its own: Title.en.vtt
+    (docs/research/yt-dlp-library.md "Cancelling")."""
     info = status.get("info_dict") or {}
     if name := info.get("_filename"):
-        prefixes.add(f"{Path(name).stem}.")
+        path = Path(name)
+        prefixes.add(path.with_name(f"{path.stem}."))
     for key in ("filename", "tmpfilename"):
         if name := status.get(key):
-            prefixes.add(Path(name).name)
+            prefixes.add(Path(name))
 
 
-def remove_unfinished(folder: Path, prefixes: set[str], there_before: set[str]) -> None:
-    """Delete the files a cancelled download left in `folder`: those whose
-    names start with one of `prefixes`, unless they were there before it
-    started (a .part left by closing the window, too). A file that lands in
-    the folder meanwhile stays, unless its name starts the same way."""
+def paths_in(folder: Path) -> set[Path]:
+    """What is in `folder` and in the folders directly inside it: the places
+    a download saves to (a playlist's videos will get a folder of their own)
+    and the only ones it deletes from (deletable())."""
+    found: set[Path] = set()
+    with os.scandir(folder) as entries:  # its is_dir() needs no extra call
+        for entry in entries:
+            found.add(Path(entry.path))
+            if not entry.is_dir():
+                continue
+            # One that can't be listed is left out rather than failing the
+            # download: yt-dlp can't save there either.
+            with contextlib.suppress(OSError):
+                found.update(Path(entry.path).iterdir())
+    return found
+
+
+def remove_unfinished(
+    folder: Path, prefixes: set[Path], there_before: set[Path]
+) -> None:
+    """Delete the files a cancelled download into `folder` left: those whose
+    paths start with one of `prefixes` (in the prefix's folder, the name
+    starting the same), unless they were there before it started (a .part
+    left by closing the window, too). A file that lands in the folder
+    meanwhile stays, unless its name starts the same way."""
     # yt-dlp's HLS downloader leaves its .part file open after the error, and
     # Windows can't delete an open file. A reference cycle holds it; this
     # closes it (measured, docs/research/yt-dlp-library.md "Cancelling").
     gc.collect()
-    starts = tuple(prefixes)
-    for path in folder.iterdir():
-        if path.name in there_before or not path.name.startswith(starts):
+    for directory in {prefix.parent for prefix in prefixes}:
+        if not directory.is_dir():
             continue
-        if path.is_file():
-            delete(path)
+        starts = tuple(p.name for p in prefixes if p.parent == directory)
+        for path in directory.iterdir():
+            if path in there_before or not path.name.startswith(starts):
+                continue
+            if path.is_file():
+                delete(path, folder)
 
 
-def remove_mp3_sources(sources: set[Path], mp3: Path, there_before: set[str]) -> None:
+def remove_mp3_sources(
+    sources: set[Path], mp3: Path, there_before: set[Path], folder: Path
+) -> None:
     """Delete the files the finished `mp3` was converted from, as yt-dlp would
     have (`keepvideo` in options()), but only those new since the download
-    started: an MP4 of the same video that was there before stays."""
+    into `folder` started: an MP4 of the same video that was there before
+    stays."""
     for path in sources:
-        if path.name != mp3.name and path.name not in there_before:
-            delete(path)
+        if path != mp3 and path not in there_before:
+            delete(path, folder)
 
 
-def delete(path: Path) -> None:
-    """Delete a file this download saved. If that fails, the download still
-    counts as done or cancelled; the reason goes to the terminal."""
+def deletable(path: Path, folder: Path) -> bool:
+    """Whether `path` is in `folder` or in a folder directly inside it, with
+    `..` and links resolved: yt-dlp would put the videos of a playlist named
+    ".." into the folder above (docs/research/yt-dlp-library.md "Playlists
+    and channels")."""
+    try:
+        inside = path.resolve().relative_to(folder.resolve())
+    except ValueError:
+        return False
+    return len(inside.parts) in (1, 2)
+
+
+def delete(path: Path, folder: Path) -> None:
+    """Delete a file the download into `folder` saved, but only in the places
+    deletable() allows. If it can't, the download still counts as done or
+    cancelled; the reason goes to the terminal."""
+    if not deletable(path, folder):
+        print(f"Not deleted, as it's outside {folder}: {path}", file=sys.stderr)
+        return
     try:
         path.unlink()
     except OSError as error:

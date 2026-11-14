@@ -52,6 +52,8 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - History: rows with a saved file (Done, Already there), the newest 200, in `%APPDATA%\video-downloader\history.json`, written anew after each saved file and each Remove; tests and screenshots always pass their own history file.
 - Cancel button next to Download: raises yt-dlp's `DownloadCancelled` from the hooks, then deletes only files that are new since the start and named `Title.` + anything (never one that was there before); an ffmpeg step finishes first.
 - MP3 sets `keepvideo`; the app deletes the file converted from only when it wasn't in the folder before (an MP4 already there stays).
+- The app deletes only through `delete()`: only in the download folder or a folder directly inside it, path resolved first; "there before" is by full path over the same two levels.
+- yt-dlp runs with `ignoreerrors: "only_download"` and the `Log` logger; a failure's message is the first "ERROR:" line.
 - Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.
 - The window's icon: extension/icons' PNGs through `iconphoto` (one copy), and the app ID `VideoDownloader.App` set in `start()` before `tk.Tk()`, or the taskbar shows Python's icon.
 - The GUI test drives the window with Tk's own key and click events in the same process, never real OS input; screenshots with Pillow (development only).

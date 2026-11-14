@@ -2,6 +2,24 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: A failed video doesn't end the download; yt-dlp's errors are read from a logger
+- **Decision:** yt-dlp gets `ignoreerrors: "only_download"` (the command line's default) and a `logger` (`Log` in downloader.py) that prints warnings and errors to the terminal as before and keeps every line starting "ERROR:". A failed download shows the first one's plain message, the same text the `DownloadError` had; `CookieLoadError` (a broken sign-in file) is the one failure that still raises. Groundwork for playlists (To do 8, step A), no visible change.
+- **Reason:** without `ignoreerrors`, one failed video ends a whole playlist (docs/research/yt-dlp-library.md "Playlists and channels").
+- **Who decided:** the user, on Claude's suggestions (To do 8's plan, 2026-11-12; confirmed 2026-11-14).
+- **Rejected:**
+  - `ignoreerrors: True`: it also turns a subtitle download that fails into a warning, so the video would be saved without the subtitles that were asked for
+  - yt-dlp's own failure count: it misses failed downloads (it counts only failed lookups)
+- **Left as is (found by the code review, no case seen):** an error in the app's own hooks now shows as yt-dlp's logged text (for example `'filepath'`) instead of "Something went wrong: ..."; yt-dlp's "ffmpeg is not installed" for joining became a warning, which can only happen when `shutil.which` finds ffmpeg but yt-dlp doesn't, and then yt-dlp already picks a single file that needs no joining (`_default_format_spec`).
+
+## 2026-11-14: A download deletes only in its folder or a folder directly inside it, compared by full path
+- **Decision:** `delete()` (Cancel's clean-up and an MP3's source) first resolves the path (`..` and links) and deletes only when it lies in the download folder or in a folder directly inside it; anything else stays, with a line in the terminal. The "there before" list (`paths_in()`) covers the same two levels (a subfolder it can't list is left out), and files are compared by full path, no longer by name. download() normalizes the folder (`os.path.abspath`) as yt-dlp does its paths, so they compare equal. Groundwork for playlists (To do 8, step A), no visible change.
+- **Reason:** a playlist's videos will go into a folder of their own, and yt-dlp would put those of a playlist named `..` into the folder above (docs/research/yt-dlp-library.md "Playlists and channels"). One check in `delete()` covers both kinds of deleting.
+- **Who decided:** the user, on Claude's suggestions (To do 8, step A, answer 1, 2026-11-14).
+- **Rejected:**
+  - deleting anywhere under the download folder: the "there before" list would have to read every subfolder, however deep, before each download, and yt-dlp never writes deeper than one folder with the app's file names
+  - a check that the path only starts with the folder's text: `Videos\..\x.mp4` starts with `Videos` but is in the folder above
+  - also skipping folders outside before listing them (code review): safe either way, and with the one check in `delete()` the terminal says why a file was left
+
 ## 2026-11-14: One window at a time: a window takes the pipe before it is built, and a second one hands over and quits
 - **Decision:** `main()` takes the pipe (`handoff.listen()`) before `tk.Tk()`. When another window has it (`PermissionError`), it hands that one its link (`send()`, with the choices if any) or, with no link, `{"show": true}` (`show()`: the open window comes to the front), and quits without showing anything. If handing over fails (the open window was closing), it takes the pipe once more; if that fails too (a stuck window), it opens a window that doesn't listen, and so does one whose pipe can't be made. `Listening` takes the pipe in `__init__` and reads only from `start()`, which `App` calls once its widgets are built; what is sent meanwhile waits in the pipe (measured, docs/research/browser-button.md). The window's first `check_links()` runs from the event loop, so a window's own link is the first row, before one handed over while it was being built. `App` and `start()` take the `listening` instead of a pipe name.
 - **Reason:** two downloads sent with the app closed, within the second or two a window takes to start, opened two windows that downloaded side by side, and the one that saved last wrote history.json without the other's rows; a window opened while one was open didn't listen. Windows gives a pipe name to one listener only, so the first window to take it wins, also when two start at once; no lock file or timing needed.

@@ -32,9 +32,11 @@ from video_downloader.downloader import (
     Event,
     Failed,
     Kind,
+    Log,
     Progress,
     download,
     options,
+    paths_in,
     plain_message,
     progress,
     remove_mp3_sources,
@@ -686,7 +688,9 @@ def test_remove_unfinished_deletes_only_new_files_named_like_the_video(
     for name in names:
         (tmp_path / name).write_bytes(b"")
     (tmp_path / "Title.folder").mkdir()  # only files are deleted
-    remove_unfinished(tmp_path, {"Title."}, there_before={"Title.mp3"})
+    remove_unfinished(
+        tmp_path, {tmp_path / "Title."}, there_before={tmp_path / "Title.mp3"}
+    )
     assert sorted(path.name for path in tmp_path.iterdir()) == [
         "Other.mp4",
         "Title (720p).mp4",
@@ -701,11 +705,89 @@ def test_remove_mp3_sources_deletes_only_new_sources(tmp_path: Path) -> None:
         (tmp_path / name).write_bytes(b"")
     # A site with MP3 audio: the download is the MP3 itself, new but kept.
     for source, mp3 in (("new.webm", "new.mp3"), ("fetched.mp3", "fetched.mp3")):
-        remove_mp3_sources({tmp_path / source}, tmp_path / mp3, set())
-    remove_mp3_sources(
-        {tmp_path / "earlier.mp4"}, tmp_path / "earlier.mp3", {"earlier.mp4"}
-    )
+        remove_mp3_sources({tmp_path / source}, tmp_path / mp3, set(), tmp_path)
+    earlier = tmp_path / "earlier.mp4"
+    remove_mp3_sources({earlier}, tmp_path / "earlier.mp3", {earlier}, tmp_path)
     assert sorted(p.name for p in tmp_path.iterdir()) == ["earlier.mp4", "fetched.mp3"]
+
+
+def test_cancel_in_a_subfolder_leaves_what_was_there_before(tmp_path: Path) -> None:
+    # Where a playlist's videos will go: a folder directly inside the
+    # download folder, perhaps there from an earlier download of it.
+    playlist = tmp_path / "Playlist"
+    (playlist / "Deeper").mkdir(parents=True)
+    (playlist / "Title.mp3").write_bytes(b"an earlier MP3")
+    there_before = paths_in(tmp_path)
+    assert there_before == {playlist, playlist / "Title.mp3", playlist / "Deeper"}
+    (playlist / "Title.mp4.part").write_bytes(b"")
+    remove_unfinished(tmp_path, {playlist / "Title."}, there_before)
+    assert sorted(path.name for path in playlist.iterdir()) == ["Deeper", "Title.mp3"]
+
+
+def test_a_subfolder_that_cant_be_listed_is_left_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Rather than failing every download (such as "Access is denied").
+    locked = tmp_path / "Locked"
+    locked.mkdir()
+    (locked / "Title.mp4").write_bytes(b"")
+    listing = Path.iterdir
+
+    def iterdir(path: Path) -> Iterator[Path]:
+        if path == locked:
+            raise PermissionError(13, "Access is denied", str(path))
+        return listing(path)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    assert paths_in(tmp_path) == {locked}
+
+
+def test_nothing_is_deleted_outside_the_download_folder(tmp_path: Path) -> None:
+    folder = tmp_path / "Videos"
+    deeper = folder / "Playlist" / "Deeper"
+    deeper.mkdir(parents=True)
+    (tmp_path / "Videos old").mkdir()
+    # A playlist named ".." would put its videos into the folder above.
+    kept = [
+        folder / ".." / "Title.mp4",
+        folder / ".." / "Videos old" / "Title.mp4",
+        deeper / "Title.mp4",
+    ]
+    deleted = [folder / "Title.mp4", folder / "Playlist" / "Title.mp4"]
+    for path in kept + deleted:
+        path.write_bytes(b"")
+    starts = {path.with_name("Title.") for path in kept + deleted}
+    remove_unfinished(folder, starts, there_before=set())
+    remove_mp3_sources({kept[0]}, folder / "Title.mp3", set(), folder)
+    assert [path for path in kept if not path.is_file()] == []
+    assert [path for path in deleted if path.exists()] == []
+
+
+def test_log_keeps_the_errors_and_prints_like_yt_dlp(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    log = Log()
+    log.debug("[generic] Extracting URL")
+    log.warning("No subtitles")
+    log.error("\r")
+    log.error("ERROR: [generic] missing: HTTP Error 404")
+    assert log.errors == ["ERROR: [generic] missing: HTTP Error 404"]
+    printed = capsys.readouterr()
+    assert printed.out == ""
+    assert printed.err == (
+        "WARNING: No subtitles\n\r\nERROR: [generic] missing: HTTP Error 404\n"
+    )
+
+
+def test_errors_and_warnings_still_reach_the_terminal(
+    clip_link: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run(clip_link.replace("clip.mp4", "missing.mp4"), Kind.MP4, tmp_path)
+    assert "ERROR: [generic] missing: Unable to download" in capsys.readouterr().err
+    # yt-dlp warns about every page it reads with its generic extractor.
+    run(clip_link.replace("clip.mp4", "german.html"), Kind.MP4, tmp_path)
+    warning = "WARNING: [generic] Falling back on generic information extractor"
+    assert warning in capsys.readouterr().err
 
 
 def test_missing_ffmpeg_fails_before_downloading(
