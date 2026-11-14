@@ -6,7 +6,7 @@
 - Updated: 2026-11-14
 
 ## To do
-Next number: 19. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
+Next number: 20. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
 
 ### Now
 The one to-do being built.
@@ -24,6 +24,7 @@ Everything else, unordered (grouped by area once it grows). A Someday to-do move
 - To do 8: Playlists and whole channels (medium; user 2026-11-11; planned, then moved here by the user 2026-11-12): docs/todo/08-playlists.md
 - To do 11: An .exe installer (large; user 2026-11-11): docs/todo/11-installer.md
 - To do 17: One window at a time (small; user 2026-11-14): docs/todo/17-one-window.md
+- To do 19: Cancel from the Chrome popup (medium; user 2026-11-14): docs/todo/19-chrome-cancel.md
 
 ## Later, only if the user asks
 - Nothing here now (all moved into the list above on 2026-11-11).
