@@ -2,9 +2,11 @@
 screenshots. Keys and clicks go through Tk's own events, so they run the same
 code a real key press or click runs, without moving the user's mouse.
 
-The window takes the keyboard focus while it is open (about 0.3 s each). Real
-key presses and clicks are ignored then, so someone typing in another window
-can't change the result (docs/research/gui-testing.md)."""
+The window opens on another screen when there is one (pick_screen()), and it
+never takes the user's keyboard: it gets the focus only within this program,
+so the window in front keeps it (docs/research/gui-test-focus.md). Real key
+presses and clicks in the test window are ignored, so they can't change the
+result (docs/research/gui-testing.md)."""
 
 import ctypes
 import tempfile
@@ -16,6 +18,7 @@ from contextlib import contextmanager
 from ctypes import wintypes
 from pathlib import Path
 from tkinter import ttk
+from typing import NamedTuple
 
 from PIL import ImageGrab
 
@@ -94,6 +97,49 @@ KEY_NAMES = {
 
 # Bind tag put first on every widget: it drops real key presses and clicks.
 IGNORE_REAL_INPUT = "GuiTestIgnoreRealInput"
+
+# Pixels between the window and the top left corner of the screen it opens on.
+SCREEN_MARGIN = 40
+
+
+class MonitorInfo(ctypes.Structure):
+    """Windows' MONITORINFO: a screen's edges, its work area and flags."""
+
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("rcMonitor", wintypes.RECT),
+        ("rcWork", wintypes.RECT),
+        ("dwFlags", wintypes.DWORD),
+    ]
+
+
+MONITORINFOF_PRIMARY = 1
+MDT_EFFECTIVE_DPI = 0
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+MonitorEnumProc = ctypes.WINFUNCTYPE(
+    wintypes.BOOL,
+    wintypes.HMONITOR,
+    wintypes.HDC,
+    ctypes.POINTER(wintypes.RECT),
+    wintypes.LPARAM,
+)
+
+# Windows' user32, a copy of its own so these types don't change
+# ctypes.windll.user32 for other code. Window handles are pointer-sized.
+user32 = ctypes.WinDLL("user32")
+user32.GetForegroundWindow.restype = wintypes.HWND
+user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+user32.SetFocus.argtypes = [wintypes.HWND]
+user32.SetFocus.restype = wintypes.HWND
+user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MonitorInfo)]
+user32.EnumDisplayMonitors.argtypes = [
+    wintypes.HDC,
+    ctypes.POINTER(wintypes.RECT),
+    MonitorEnumProc,
+    wintypes.LPARAM,
+]
 
 
 class InputState:
@@ -210,20 +256,91 @@ def open_window(
     pipe: the named pipe it listens on for links sent from outside; None:
     it doesn't listen. Never handoff.PIPE, or a real link could reach it.
     """
+    in_front = user32.GetForegroundWindow()  # the user's window
     app = start(download, folder, files or FakeFiles(), history, pipe)
     root = app.root
     try:
+        screen = pick_screen(screens())
+        if screen is not None:  # before it shows, so it opens there
+            x, y = screen.left + SCREEN_MARGIN, screen.top + SCREEN_MARGIN
+            root.geometry(f"+{x}+{y}")
         root.attributes("-topmost", True)
-        if width is not None:
-            root.update_idletasks()  # works out the height the widgets need
-            root.geometry(f"{width}x{root.winfo_reqheight()}")
         ignore_real_input(root)
+        # Shows the window and works out the height the widgets need. Windows
+        # may put a program's first window in front: give the front back now,
+        # as update() takes a few hundred ms more (measured).
+        root.update_idletasks()
+        if in_front and user32.GetForegroundWindow() == int(root.wm_frame(), 16):
+            user32.SetForegroundWindow(in_front)
+        if width is not None:
+            root.geometry(f"{width}x{root.winfo_reqheight()}")
         root.update()
         focus(app.link_entry)
     except BaseException:
         root.destroy()
         raise
     return app
+
+
+class Screen(NamedTuple):
+    """A screen's work area (without the taskbar) in screen pixels, whether
+    it is the main screen, and its DPI (144 at 150% scaling)."""
+
+    left: int
+    top: int
+    right: int
+    bottom: int
+    main: bool
+    dpi: int
+
+
+def screens() -> list[Screen]:
+    """This PC's screens, in the order Windows lists them. The edges are in
+    the window's pixels, as root.geometry() takes them."""
+    found: list[Screen] = []
+
+    def add(monitor: int, _dc: int, _rect: object, _data: int) -> bool:
+        info = MonitorInfo()
+        info.cbSize = ctypes.sizeof(info)
+        user32.GetMonitorInfoW(monitor, ctypes.byref(info))
+        work = info.rcWork
+        main = bool(info.dwFlags & MONITORINFOF_PRIMARY)
+        dpi = screen_dpi(monitor)
+        found.append(Screen(work.left, work.top, work.right, work.bottom, main, dpi))
+        return True
+
+    callback = MonitorEnumProc(add)  # kept alive until Windows is done with it
+    user32.EnumDisplayMonitors(None, None, callback, 0)
+    return found
+
+
+def screen_dpi(monitor: int) -> int:
+    """A screen's own DPI. The window is system-DPI-aware (app.start()), and
+    Windows then gives the main screen's DPI for every screen (measured), so
+    this asks as a per-screen-DPI-aware thread for a moment."""
+    previous = user32.SetThreadDpiAwarenessContext(
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+    )
+    try:
+        dpi, dpi_y = wintypes.UINT(), wintypes.UINT()
+        ctypes.windll.shcore.GetDpiForMonitor(
+            wintypes.HMONITOR(monitor),
+            MDT_EFFECTIVE_DPI,
+            ctypes.byref(dpi),
+            ctypes.byref(dpi_y),
+        )
+    finally:
+        user32.SetThreadDpiAwarenessContext(previous)
+    return dpi.value
+
+
+def pick_screen(screens: list[Screen]) -> Screen | None:
+    """The screen the window opens on: the topmost one other than the main
+    screen, with the main screen's scaling (on another, Windows would stretch
+    the window and blur screenshots). None: there is no such screen."""
+    main_dpi = next((screen.dpi for screen in screens if screen.main), None)
+    others = [s for s in screens if not s.main and s.dpi == main_dpi]
+    return min(others, key=lambda screen: (screen.top, screen.left), default=None)
 
 
 def ignore_real_input(window: tk.Misc) -> None:
@@ -244,11 +361,17 @@ def ignore_real_input(window: tk.Misc) -> None:
 
 
 def focus(widget: tk.Widget) -> None:
-    """Give the widget the keyboard focus, taking it back if another window
-    took it (a click elsewhere, or Windows activating another window)."""
+    """Give the widget the keyboard focus, also when another window has it.
+    Windows' SetFocus sets this program's own focus only, so the user's
+    window stays the one in front and keeps the real keyboard (focus_force()
+    would take both)."""
     if widget.focus_get() is widget:
         return
-    widget.focus_force()
+    # Without the window's focus, Tk only notes the widget: when the window
+    # gets the focus, Tk passes it on to the widget noted last (else to the
+    # one last clicked, such as a radio button).
+    widget.focus_set()
+    user32.SetFocus(widget.winfo_id())
     widget.update()
     if widget.focus_get() is not widget:
         raise RuntimeError(f"{widget} didn't get the keyboard focus")

@@ -19,10 +19,11 @@ Don't build what's under "Later" in docs/todo.md until asked. Never: anything th
 Read by the /build-todo skill. Times measured 2026-11-10 (To do 1).
 - **Checks** (from the project folder, `.venv` active):
   - After each edit (fast): `ruff check .` and `ruff format .` (0.1 s together).
-  - Once per step (slow): `pytest` (25 to 37 s; tests never touch the internet, the download tests fetch a clip from a web server they start on this PC and need ffmpeg), the GUI test `pytest tests/gui/window_gui.py` (about 30 s; a fake download stands in for yt-dlp) and `pyright` (1-2 s). Times measured 2026-11-14 (To do 10; 9 to 14 s and 12 s on 2026-11-12, the slowest tests are the download tests).
+  - Once per step (slow): `pytest` (25 to 37 s; tests never touch the internet, the download tests fetch a clip from a web server they start on this PC and need ffmpeg) and `pyright` (1-2 s). Times measured 2026-11-14 (To do 10; 9 to 14 s and 12 s on 2026-11-12, the slowest tests are the download tests).
+  - The GUI test `pytest tests/gui/window_gui.py` (24 to 28 s, measured 2026-11-14; a fake download stands in for yt-dlp): once, only in a step that changes app.py, handoff.py or tests/gui. It is the only test that types and clicks in the real window and sends it a link; the other files are covered by `pytest`.
   - pytest runs with `--capture=sys` (set in pyproject.toml): the default breaks a second tkinter window (docs/research/tkinter-tests.md).
-  - The GUI test opens the real window on top and takes the keyboard focus; real keys and clicks in it are ignored meanwhile. A UI change gets a step in it (tests/gui/window_gui.py; helpers in tests/gui/drive.py). How it works: docs/research/gui-testing.md.
-  - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done, error, cancelled, queue, history, received). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 420 tokens each (estimate from the size, 903 × 350 px measured 2026-11-12). A new screen gets an entry in `SCREENS` in that file.
+  - The GUI test opens the real window on top, on another screen with the main screen's scaling when there is one (on this PC the right-hand one), and doesn't take the keyboard or the front (the first window is in front for about 40 ms per run); real keys and clicks in the test window are ignored. A UI change gets a step in it (tests/gui/window_gui.py; helpers in tests/gui/drive.py). How it works: docs/research/gui-testing.md.
+  - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done, error, cancelled, queue, history, received). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 690 tokens each (estimate from the size, 903 × 571 px measured 2026-11-14); the title bar is grey, as the window isn't in front. A new screen gets an entry in `SCREENS` in that file.
 - **Docs to update when behaviour changes:** README.md (headline features, install and run steps, Credits), docs/using.md (how each part of the window works) and any help text in the app. When a README section grows past about a screen, move it into docs/NAME.md and link it from the README.
 - **Must keep working:** Enter in the link box and the Download button both start a download (checked by the GUI test).
 - **Review checklist:** none yet: the built-in code-review skill. Add docs/review.md once the project has its own rules to check.
@@ -50,6 +51,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - MP3 sets `keepvideo`; the app deletes the file converted from only when it wasn't in the folder before (an MP4 already there stays).
 - Failures show a plain message (text patterns in `PLAIN_MESSAGES`, first match wins), anything else yt-dlp's own text; ffmpeg is checked before a download starts.
 - The GUI test drives the window with Tk's own key and click events in the same process, never real OS input; screenshots with Pillow (development only).
+- GUI test and screenshot windows open on the topmost other screen with the main screen's scaling (picked automatically) and never take the front: focus with Windows' `SetFocus`, never `focus_force()`; `bring_to_front()` is recorded there, not called.
 
 ## Project docs
 - README.md: what it is, install and run, Credits.

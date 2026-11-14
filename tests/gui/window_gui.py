@@ -2,10 +2,11 @@
 
 Run it with: pytest tests/gui/window_gui.py
 A plain `pytest` skips it (the file name doesn't start with test_), because the
-window pops up on top and takes the keyboard focus for a moment. A fake
+windows pop up on top, on another screen if there is one (drive.py). A fake
 download stands in for yt-dlp, so nothing touches the internet.
 """
 
+import tkinter as tk
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -19,12 +20,15 @@ from drive import (
     VIDEO_TITLE,
     FakeDownload,
     FakeFiles,
+    Screen,
     assert_inside_window,
     box,
     click,
     click_row,
     open_window,
+    pick_screen,
     press,
+    screens,
     type_text,
     wait_until,
     write_history,
@@ -105,14 +109,16 @@ def test_enter_in_link_box_starts_download(app: App, fake: FakeDownload) -> None
 
 
 def test_a_sent_link_fills_the_box_and_enter_starts_it(
-    app: App, fake: FakeDownload, pipe: str
+    app: App, fake: FakeDownload, pipe: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Recorded: really bringing the window to the front would take the user's
+    # keyboard. That part was checked by hand (To do 10).
+    to_front: list[tk.Tk] = []
+    monkeypatch.setattr("video_downloader.app.bring_to_front", to_front.append)
     type_text(app.link_entry, "half")
-    app.root.iconify()  # it comes back from the taskbar too
-    app.root.update()
     assert handoff.send(LINK2, pipe), "the window listens on its pipe"
     wait_until(app, lambda: app.link.get() == LINK2, "the sent link in the box")
-    assert app.root.state() == "normal", "the window is shown again"
+    assert to_front == [app.root], "the window is brought to the front"
     assert app.status.get() == LINK_RECEIVED
     assert fake.calls == [], "it waits for Download"
     press(app.link_entry, "Return")
@@ -386,3 +392,32 @@ def test_long_message_wraps_instead_of_widening(app: App) -> None:
     assert app.root.winfo_width() == width, "a long message widened the window"
     assert_inside_window(app.status_label)
     assert_inside_window(app.show_button)
+
+
+def test_the_topmost_other_screen_is_picked() -> None:
+    main = Screen(0, 0, 2560, 1528, main=True, dpi=144)
+    above = Screen(960, -1620, 3840, -72, main=False, dpi=144)
+    right = Screen(3840, -1298, 7680, 790, main=False, dpi=144)
+    assert pick_screen([right, main, above]) == above
+    assert pick_screen([main, right]) == right
+    other_scaling = above._replace(dpi=96)
+    assert pick_screen([main, other_scaling]) is None, "it would be stretched"
+    assert pick_screen([main]) is None
+
+
+def test_the_window_opens_on_the_picked_screen(app: App) -> None:
+    screen = pick_screen(screens())
+    if screen is None:
+        pytest.skip("no other screen with the main screen's scaling")
+    # Tk's own position: in the same pixels as the screen's edges (with a
+    # screen at another scaling, window_frame()'s pixels differ).
+    root = app.root
+    left, top = root.winfo_rootx(), root.winfo_rooty()
+    right, bottom = left + root.winfo_width(), top + root.winfo_height()
+    inside = (
+        screen.left <= left
+        and screen.top <= top
+        and right <= screen.right
+        and bottom <= screen.bottom
+    )
+    assert inside, f"window at {(left, top, right, bottom)}, screen {screen}"

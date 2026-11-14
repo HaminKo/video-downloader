@@ -4,13 +4,15 @@
     python tests/gui/screenshots.py done      one screen by name
 
 Saved to the temp folder (video-downloader-screenshots), never the project;
-prints each file's path. The window pops up on top for a moment.
+prints each file's path. The window pops up on top for a moment, on another
+screen if there is one (drive.py), without taking the keyboard.
 """
 
 import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from unittest import mock
 
 from drive import (
     LINK,
@@ -83,8 +85,10 @@ def with_history(app: App, fake: FakeDownload) -> None:
 
 def received(app: App, fake: FakeDownload) -> None:
     """A link sent from outside (python -m video_downloader LINK): in the box,
-    the hint under the list."""
-    app.receive_link(LINK)
+    the hint under the list. The window isn't really brought to the front:
+    that would take the user's keyboard."""
+    with mock.patch("video_downloader.app.bring_to_front"):
+        app.receive_link(LINK)
     app.root.update()
 
 

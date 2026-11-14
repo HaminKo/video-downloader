@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: To do 15 (GUI test on another screen, without taking the keyboard)
+- Now: Nothing open (pick from Someday when one bugs you)
 - Next: none (Bugs me is empty)
 - Updated: 2026-11-14
 
@@ -11,7 +11,7 @@ Next number: 16. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- To do 15: GUI test on another screen, without taking the keyboard (small; user 2026-11-13): docs/todo/15-gui-test-focus.md
+- Nothing here now.
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.

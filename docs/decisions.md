@@ -2,6 +2,18 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: GUI test windows on another screen, without taking the keyboard
+- **Decision:** drive.py opens the GUI test's and the screenshots' windows on the topmost screen other than the main one that has the main screen's scaling (on this PC the right-hand screen); with none, on the main screen as before. Picked automatically, no setting. A widget gets the focus with Windows' `SetFocus` (this program's own focus only) instead of `focus_force()`, and drive.py gives the front back if Windows put the first window in front. The GUI test's pipe step and the "received" screenshot record `bring_to_front()` instead of calling it.
+- **Reason:** the test windows took the front and the keyboard while the GUI test ran (about 30 s), so typing in VS Code got lost, and Windows refused `focus_force()` now and then (the "didn't get the keyboard focus" errors). A screen with other scaling shrinks the window and blurs it, so screenshots wouldn't show what the user sees. Measurements: docs/research/gui-test-focus.md.
+- **Who decided:** the user (the goal, To do 15), on Claude's suggestions. The user first asked for the topmost screen, then chose the right-hand one on hearing the topmost is at 100% scaling.
+- **Rejected:**
+  - the topmost screen whatever its scaling: it is at 100% on this PC, so the window shows at two thirds of its size, blurry, and screenshots come out 602 px wide instead of 903
+  - the GUI test on the topmost screen and screenshots on the right-hand one: two rules, and blurry test windows
+  - setting the topmost screen to 150% in Windows: it changes the user's screen for everything else
+  - really bringing the window to the front in the pipe step: it takes the keyboard; the user checked it by hand in To do 10
+  - a VM, Windows Sandbox, containers or another Windows desktop: docs/research/gui-test-focus.md, "Considered, not worth it"
+- **Also decided (the user, on Claude's wording):** the GUI test runs only in steps that change app.py, handoff.py or tests/gui; it is the only test that types and clicks in the real window and sends it a link (handoff.py added after the review).
+
 ## 2026-11-14: The Chrome button sends only web pages and shows only failures; its helper is a module of its own that never imports yt-dlp
 - **Decision:** a click on a page that isn't a web page (New Tab, `chrome://`, a file from disk) sends nothing; the button shows a red "!" and its tooltip says why ("Only web pages can be sent.", "The helper isn't installed: ...", or Chrome's own message), until the next click that works. Nothing shows when it works: the app coming to the front is the sign. Icon: a white down arrow on a blue rounded square; name "Video Downloader". The helper Chrome starts is `host.py` (`python -m video_downloader.host`, through `host.bat`), apart from the setup in `browser.py`, and imports only `handoff`.
 - **Reason:** a `chrome://` link in the box could only fail later. The helper starts once per click; importing `downloader` (yt-dlp) would add 0.18-0.37 s to each (measured 2026-11-14), while setup runs once and may import it for `DATA_FOLDER`.
