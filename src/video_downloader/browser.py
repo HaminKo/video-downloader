@@ -8,6 +8,10 @@ host.py with this Python) and its manifest (host.json) into the app's own
 folder, and points Chrome's registry key at the manifest. Only the extension
 with EXTENSION_ID may start the helper. The extension itself is loaded by
 hand in chrome://extensions ("Load unpacked"; docs/using.md).
+
+The installed app doesn't use these commands: installer/build.py writes its
+host.json, and Setup points the key at it (installer/setup.iss). So this
+module imports nothing slow either (no yt-dlp).
 """
 
 import argparse
@@ -18,7 +22,7 @@ import winreg
 from pathlib import Path
 
 from video_downloader import places
-from video_downloader.downloader import DATA_FOLDER
+from video_downloader.places import DATA_FOLDER
 
 # Chrome's name for the helper; extension/popup.js uses it too.
 HOST_NAME = "video_downloader"
@@ -62,14 +66,24 @@ def bat_text(python: Path) -> str:
     return f'@"{python}" -m video_downloader.host\n'
 
 
-def host_manifest(bat: Path) -> dict[str, object]:
+def host_manifest(helper: Path) -> dict[str, object]:
     return {
         "name": HOST_NAME,
         "description": "Video Downloader: gets links from the Chrome button",
-        "path": str(bat),
+        "path": str(helper),
         "type": "stdio",
         "allowed_origins": [f"chrome-extension://{EXTENSION_ID}/"],
     }
+
+
+def write_manifest(folder: Path, helper: Path) -> Path:
+    """Write host.json into folder, for the helper Chrome starts; returns its
+    path. On Windows the helper's path may be relative to that folder, as in
+    the built app (docs/research/browser-button.md)."""
+    manifest = folder / MANIFEST
+    text = json.dumps(host_manifest(helper), indent=2)
+    manifest.write_text(text + "\n", encoding="utf-8")
+    return manifest
 
 
 def write_key(manifest: Path) -> None:
@@ -88,10 +102,7 @@ def install(folder: Path, python: Path) -> None:
     bat = folder / BAT
     # cmd.exe reads a .bat in the OEM code page.
     bat.write_text(bat_text(python), encoding="oem")
-    manifest = folder / MANIFEST
-    text = json.dumps(host_manifest(bat), indent=2)
-    manifest.write_text(text + "\n", encoding="utf-8")
-    write_key(manifest)
+    write_key(write_manifest(folder, bat))
 
 
 def uninstall(folder: Path) -> None:

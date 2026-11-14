@@ -27,6 +27,8 @@ import yt_dlp
 from yt_dlp.cookies import CookieLoadError
 from yt_dlp.utils import DownloadCancelled
 
+from video_downloader import places
+
 if TYPE_CHECKING:
     # yt-dlp's settings as pyright knows them (its bundled yt-dlp stubs).
     from yt_dlp import _Params
@@ -86,17 +88,10 @@ FILE_NAME_WITH_QUALITY = "%(title).150B ({height}p).%(ext)s"
 # channels").
 PLAYLIST_FOLDER = "%(playlist_title|.).80B/"
 
-# The app's own folder for what it keeps between sessions: the sign-in file
-# and the history of downloads.
-DATA_FOLDER = (
-    Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming")
-    / "video-downloader"
-)
-
 # Sign-ins the user exported from their browser as a cookies.txt (Reddit's
 # only), used whenever the file is there. yt-dlp can't read Edge's or Chrome's
 # own cookies on Windows (docs/research/signing-in.md, docs/signing-in.md).
-COOKIES = DATA_FOLDER / "cookies.txt"
+COOKIES = places.DATA_FOLDER / "cookies.txt"
 
 # yt-dlp's steps after the download, as the window names them.
 STEP_TEXTS = {

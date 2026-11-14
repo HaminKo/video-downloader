@@ -1,17 +1,17 @@
 # To do
 
 ## Where we are
-- Now: To do 11, step B (the installer)
+- Now: Nothing open (To do 11 finished; a to-do moves up when it starts to bug the user)
 - Next: Nothing under Bugs me
 - Updated: 2026-11-14
 
 ## To do
-Next number: 20. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
+Next number: 21. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
 
 ### Now
 The one to-do being built.
 
-- To do 11: An .exe installer (large; user 2026-11-11): docs/todo/11-installer.md
+- Nothing here now.
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
@@ -21,7 +21,7 @@ At most 5, in order: the next ones to build. When Now is finished, the first one
 ### Someday
 Everything else, unordered (grouped by area once it grows). A Someday to-do moves up only when it starts to bug the user.
 
-- Nothing here now.
+- To do 20: Setup and the uninstaller ask to close an open window first (small; Claude 2026-11-14): docs/todo/20-close-before-setup.md
 
 ## Later, only if the user asks
 - Nothing here now (all moved into the list above on 2026-11-11).

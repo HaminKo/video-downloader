@@ -25,13 +25,9 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, i
 ## The Chrome button
 A button in Chrome's toolbar that downloads the video on the page you're on, without leaving Chrome: on a YouTube video, click it, choose MP4 or MP3 (and for a video its quality and English subtitles) in the small window that opens, and press Download (or Enter). The app adds the video to its list and downloads it, while its window stays where it is; with the app closed, it opens minimized on the taskbar. Progress and the finished file are in the app's window, as for any download; the small window can also cancel it.
 
-**Setting it up**, once (in PowerShell, in the project folder, with the `.venv` active):
-1. Install the helper Chrome starts for each click:
-   ```powershell
-   python -m video_downloader.browser install
-   ```
-   It prints the folder to load in the next step and the extension's ID.
-2. In Chrome, open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked** and choose the `extension` folder in the project folder. Check that the ID under Video Downloader is the one the command printed.
+**Setting it up**, once:
+1. Install the app with Setup ([Installing and updating](#installing-and-updating)): that also sets up the helper Chrome starts for each click.
+2. In Chrome, open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked** and choose the installed app's `extension` folder, `%LOCALAPPDATA%\Programs\Video Downloader\extension` (paste it into the address bar at the top of the folder window). The ID under Video Downloader should be `ihppdkclbgnohioighdlmologiiggoah`. If Video Downloader is already loaded from the project folder, click Remove under it first, so Chrome uses the installed one.
 3. Pin the button: click the puzzle piece in Chrome's toolbar, then the pin next to Video Downloader.
 
 **Using it:** click the button on a page with a video. The small window has the app's choices; it remembers the last ones you picked (its own, apart from the app's window). After Download it says "Added to Video Downloader." and closes by itself. **Open in the window instead** sends only the link: the app comes to the front with the link in its box (or opens with it), the same as a link from outside above, for when you want to look first.
@@ -40,7 +36,7 @@ A button in Chrome's toolbar that downloads the video on the page you're on, wit
 
 When it doesn't work, the small window says why in red and stays open, so you can try again:
 - "Only web pages can be sent": shown at once on the New Tab page, Chrome's own pages (`chrome://`) and files opened from disk; the buttons are greyed out there.
-- "The helper isn't installed": run the install command from step 1.
+- "The helper isn't installed": install the app again with Setup (or, running from the project, run its install command, below).
 - "Nothing to cancel": the app isn't downloading this page and it isn't waiting either (it isn't in the list, or it has finished or failed already).
 - "Video Downloader isn't open": Cancel with the app closed.
 - "Video Downloader didn't answer": the app was busy or closing; try again.
@@ -48,12 +44,15 @@ When it doesn't work, the small window says why in red and stays open, so you ca
 
 Nothing shows in Chrome when a download ends, or fails later on (a private video, say): the app's window shows it.
 
-**After moving the project or making the `.venv` anew**, run the install command again, and in `chrome://extensions` click the reload arrow under Video Downloader (or load it again from the new folder). The helper runs the project's Python, and Chrome loads the button from the project folder.
-
 **After updating the app**, click the reload arrow under Video Downloader in `chrome://extensions`: Chrome keeps the button it loaded until then.
 
-**Removing it:**
-```powershell
-python -m video_downloader.browser uninstall
-```
-Then remove the button in `chrome://extensions` (Remove under Video Downloader). Uninstalling removes only the helper's two files (`host.bat` and `host.json` in `%APPDATA%\video-downloader`) and its registry entry; the history and the sign-in file stay.
+**Removing it:** uninstalling the app removes the helper; then remove the button in `chrome://extensions` (Remove under Video Downloader).
+
+**From the project instead** (development), in PowerShell in the project folder with the `.venv` active: `python -m video_downloader.browser install` points Chrome at the project's helper, which runs the project's Python and starts the project's window; load the project's `extension` folder in Chrome instead of the installed one. Run it again after moving the project or making the `.venv` anew, and click the reload arrow under Video Downloader. `python -m video_downloader.browser uninstall` takes it away: it removes only the helper's two files (`host.bat` and `host.json` in `%APPDATA%\video-downloader`) and its registry entry; the history and the sign-in file stay. There is one registry entry for both: installing the app again points it back at the installed helper, and uninstalling the app removes it even when it points at the project's (run the install command again then).
+
+## Installing and updating
+`python installer/build.py` makes `dist\Video Downloader Setup.exe` (README, "Install and run"). Setup installs the app for your account only, into `%LOCALAPPDATA%\Programs\Video Downloader`, without asking for admin rights. It has one page: tick **Create a desktop shortcut** if you want one, then click **Install**; at the end, **Launch Video Downloader** is ticked. The Start-menu entry is **Video Downloader**; to keep it on the taskbar, right-click it and choose **Pin to taskbar** (the pinned button and the open window are then one button). Settings > Apps lists the app with the day and time it was built as its version.
+- Setup also sets up the Chrome button's helper for the installed app ([The Chrome button](#the-chrome-button)).
+- **Updating yt-dlp**, needed now and then when YouTube changes and its downloads start failing: build again with `python installer/build.py` (it updates yt-dlp first) and run the new Setup. It installs over the old app; if the window is open, Setup offers to close it. ffmpeg and Deno aren't part of the app: `winget upgrade` updates them.
+- **Uninstalling:** close the app first, then Settings > Apps > Video Downloader > Uninstall. It removes the app, its Start-menu entry and desktop shortcut, and the Chrome button's helper; your history and sign-in file in `%APPDATA%\video-downloader` stay. With the window still open, Windows can't delete the running app: uninstalling then says some parts couldn't be removed, and part of the app's folder stays behind. Close the app and delete `%LOCALAPPDATA%\Programs\Video Downloader` by hand.
+- **Running from the project** instead, for development: README, "Development". The installed app and the project's share the one window: whichever opens first is the one, and starting the other brings it to the front.

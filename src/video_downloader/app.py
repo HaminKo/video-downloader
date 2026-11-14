@@ -33,7 +33,7 @@ from enum import StrEnum
 from pathlib import Path
 from tkinter import font, messagebox, ttk
 
-from video_downloader import downloader, handoff
+from video_downloader import downloader, handoff, places
 from video_downloader.browser import EXTENSION_FOLDER
 from video_downloader.downloader import (
     Cancelled,
@@ -101,7 +101,7 @@ LIST_ROWS = 6
 
 # The downloads with a saved file, kept for the next sessions: the newest
 # HISTORY_SIZE of them. The tests pass a file of their own.
-HISTORY = downloader.DATA_FOLDER / "history.json"
+HISTORY = places.DATA_FOLDER / "history.json"
 HISTORY_SIZE = 200
 
 # link, MP4 or MP3, folder, report, the quality limit (None: the best),

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from video_downloader import app, browser, downloader, handoff
+from video_downloader import app, browser, downloader, handoff, places
 
 
 def own_pipe() -> str:
@@ -23,6 +23,7 @@ def own_files_in_a_temporary_folder(
     monkeypatch.setattr(downloader, "COOKIES", folder / "cookies.txt")
     monkeypatch.setattr(app, "HISTORY", folder / "history.json")
     monkeypatch.setattr(browser, "DATA_FOLDER", folder)
+    monkeypatch.setattr(places, "DATA_FOLDER", folder)  # for any later reader
     monkeypatch.setattr(handoff, "PIPE", own_pipe())
 
 

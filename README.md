@@ -20,38 +20,39 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, i
 Everything in detail: [Using the app](docs/using.md).
 
 ## Install and run
-Needs Windows, Python 3.13 or newer, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com). All commands are for PowerShell.
+Needs Windows, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com). You build the installer yourself, which needs Python 3.13 or newer and [Inno Setup](https://jrsoftware.org/isinfo.php). All commands are for PowerShell, in the project folder.
 
-1. Install ffmpeg (yt-dlp's own build, which patches some ffmpeg bugs that affect yt-dlp) and Deno:
+1. Install ffmpeg (yt-dlp's own build, which patches some ffmpeg bugs that affect yt-dlp), Deno and Inno Setup:
    ```powershell
    winget install --id yt-dlp.FFmpeg -e
    winget install --id DenoLand.Deno -e
+   winget install --id JRSoftware.InnoSetup -e
    ```
    Then restart VS Code (or your terminal) so it sees the new programs.
-2. In the project folder, create the virtual environment and install the app with its tools:
+2. Create the virtual environment and install the app's code with its tools:
    ```powershell
    py -3.13 -m venv .venv
    .venv\Scripts\Activate.ps1
    python -m pip install -e ".[dev]"
    ```
    If PowerShell says "running scripts is disabled on this system", allow scripts for your account once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, then run the last two lines again.
-3. Run it (with the `.venv` active):
+3. Build the installer (it takes a few minutes, and updates yt-dlp first):
    ```powershell
-   python -m video_downloader
+   python installer/build.py
    ```
-   With a link after it (`python -m video_downloader LINK`), the link goes into the box of the window that is open, or a new window opens with it. The app has only one window: starting it again brings the open one to the front.
-4. Optional, the Chrome button: run `python -m video_downloader.browser install`, then load the project's `extension` folder in Chrome. Step by step: [The Chrome button](docs/using.md#the-chrome-button).
+4. Run `dist\Video Downloader Setup.exe`. It installs the app for your account only (no admin rights needed), adds it to the Start menu and starts it. The app has only one window: starting it again brings the open one to the front.
+5. Optional, the Chrome button: load the installed app's `extension` folder in Chrome. Step by step: [The Chrome button](docs/using.md#the-chrome-button).
 
-To check that yt-dlp finds ffmpeg and Deno, run `yt-dlp -v`: the `exe versions` line should list ffmpeg and the `JS runtimes` line deno. It ends with "You must provide at least one URL", which is expected.
-
-To update yt-dlp (needed now and then when YouTube changes): `python -m pip install -U "yt-dlp[default]"`.
+To update yt-dlp (needed now and then when YouTube changes), do steps 3 and 4 again: the new build installs over the old one. To uninstall, use Settings > Apps; your history and sign-in file stay. More: [Installing and updating](docs/using.md#installing-and-updating).
 
 ## Development
-With the `.venv` active: `ruff check .` and `ruff format .` (lint and formatting), `pytest` (tests), `pyright` (type check).
+Run the app straight from the project, with the `.venv` active: `python -m video_downloader` (with a link after it, the link goes into the open window's box). The Chrome button then needs `python -m video_downloader.browser install`, which points Chrome at the project's helper instead of the installed one ([The Chrome button](docs/using.md#the-chrome-button)). Updating yt-dlp here: `python -m pip install -U "yt-dlp[default]"`. To check that yt-dlp finds ffmpeg and Deno, run `yt-dlp -v`: the `exe versions` line should list ffmpeg and the `JS runtimes` line deno; the closing "You must provide at least one URL" is expected.
+
+Checks, with the `.venv` active: `ruff check .` and `ruff format .` (lint and formatting), `pytest` (tests), `pyright` (type check).
 
 `pytest` needs ffmpeg: two tests download a 1-second clip from a small web server they start on this PC (never the internet).
 
-The app as .exe files: `python installer/build.py` updates yt-dlp, then builds the app into `dist\Video Downloader\` (start it with `Video Downloader.exe` there). `--no-update` leaves yt-dlp as it is.
+The build: `python installer/build.py` updates yt-dlp, builds the app into `dist\Video Downloader\` (`Video Downloader.exe` there starts it without installing) and makes `dist\Video Downloader Setup.exe` from it. `--no-update` leaves yt-dlp as it is.
 
 GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 seconds, types a link, presses Enter and clicks Download, and checks what the window shows; a fake download stands in for yt-dlp. Screenshots: `python tests/gui/screenshots.py` (or one screen by name, e.g. `done`) saves them to the temp folder and prints the paths. Both bring the window to the front and take the keyboard focus while they run; keys typed then are ignored. How they work: [docs/research/gui-testing.md](docs/research/gui-testing.md).
 
@@ -63,4 +64,5 @@ GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 sec
 - [Get cookies.txt LOCALLY](https://github.com/kairi003/Get-cookies.txt-LOCALLY) by kairi003, MIT: a browser extension, not part of the app, for exporting Reddit's sign-in ([Signing in](docs/signing-in.md)).
 - [Python](https://www.python.org) and tkinter by the Python Software Foundation, PSF License (tkinter uses [Tcl/Tk](https://www.tcl-lang.org), BSD-style license): the app and its window.
 - [PyInstaller](https://pyinstaller.org) by the PyInstaller Development Team, GPL 2.0 with an exception for the programs it builds: builds the app's .exe files.
+- [Inno Setup](https://jrsoftware.org/isinfo.php) by Jordan Russell and Martijn Laan, Inno Setup License (free, also for commercial use): makes the installer.
 - Development tools: [ruff](https://github.com/astral-sh/ruff) by Astral (MIT), [pyright](https://github.com/microsoft/pyright) by Microsoft (MIT), [pytest](https://pytest.org) by the pytest-dev team (MIT), [Pillow](https://python-pillow.github.io) by Jeffrey A. Clark and contributors (MIT-CMU, screenshots for the GUI test; drew the Chrome button's icons and makes the .exe files' icon), [hatchling](https://github.com/pypa/hatch) by the Python Packaging Authority (MIT, builds the package for the install).

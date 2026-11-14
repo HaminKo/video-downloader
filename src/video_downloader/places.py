@@ -1,10 +1,12 @@
 """Where the app's parts are: in the project, run with Python, or in the app
 built by installer/build.py (PyInstaller, which sets sys.frozen). The built
-app is one folder: the two .exe files, PyInstaller's _internal folder, and
-the Chrome extension's folder. Imports nothing slow: Chrome's helper
-(host.py) uses it at every click.
+app is one folder: the two .exe files, PyInstaller's _internal folder, the
+Chrome extension's folder and the helper's manifest (host.json). Imports
+nothing slow: Chrome's helper (host.py) uses it at every click, and
+installer/build.py while it updates yt-dlp.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +14,13 @@ from pathlib import Path
 APP_NAME = "Video Downloader"
 APP_EXE = f"{APP_NAME}.exe"  # the window, no console
 HELPER_EXE = "chrome-helper.exe"  # Chrome's helper, a console program
+
+# The app's own folder for what it keeps between sessions: the sign-in file
+# and the history of downloads. Uninstalling the built app keeps it.
+DATA_FOLDER = (
+    Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming")
+    / "video-downloader"
+)
 
 
 def built() -> bool:
