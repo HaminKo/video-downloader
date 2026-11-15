@@ -1,17 +1,17 @@
 # To do
 
 ## Where we are
-- Now: Nothing open (To do 20 finished; a to-do moves up when it starts to bug the user)
-- Next: Nothing under Bugs me
+- Now: To do 21 (yt-dlp updates itself)
+- Next: Before a public release (nothing under Bugs me)
 - Updated: 2026-11-14
 
 ## To do
-Next number: 21. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
+Next number: 22. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
 
 ### Now
 The one to-do being built.
 
-- Nothing here now.
+- To do 21: yt-dlp updates itself (large; user 2026-11-14): docs/todo/21-yt-dlp-updates-itself.md
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
@@ -26,6 +26,17 @@ Everything else, unordered (grouped by area once it grows). A Someday to-do move
 ## Later, only if the user asks
 - Nothing here now (all moved into the list above on 2026-11-11).
 - Never (not "later"): DRM-protected services such as Netflix, Disney+ or Spotify.
+
+## Before a public release
+Starts once To do 21 is finished (the user, 2026-11-14: a Setup.exe that other people install must keep yt-dlp current). In this order:
+- A license: add a LICENSE file, MIT (the user, 2026-11-14).
+- A screenshot of the window in the README (`python tests/gui/screenshots.py`).
+- The README follows the "README" rule in ~/.claude/CLAUDE.md, checked with `/trim-readme` (it measures first and stops if the README already fits).
+- A fresh subagent that hasn't seen the project checks README.md and the docs it links against the code, and only reports; the user decides the fixes.
+- Start CHANGELOG.md (Keep a Changelog: Unreleased first, then versions newest first) with the first version.
+- Setup.exe as a download on a GitHub Release: ask the user first (suggested: yes, now that To do 21 keeps yt-dlp current). A downloaded, unsigned Setup.exe gets SmartScreen's warning (docs/research/installer.md, "Signing"), and the Chrome button is an unpacked extension, which others load in Chrome's developer mode; the README says both.
+- Last, so it sees every file written above: search all tracked files for the "Never in tracked files" list in CLAUDE.md. If old commits hold any of it (except the GitHub login, which old commits may hold), publish a new repo with one clean commit instead of rewriting history.
+- Then the user switches the repo to public.
 
 ## Writing a to-do
 - **Number:** the "Next number" (then raise that line by one). The line goes under Someday, unless the user says it bugs them or wants it soon: then under Bugs me where the user says (at most 5 there, so ask which one drops back to Someday), and "Next:" and "Updated:" in "Where we are" change with it.

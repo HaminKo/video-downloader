@@ -44,6 +44,7 @@ Started 2026-11-14 (To do 11, questions and plan). Marked by how each fact is kn
 
 ## Updating yt-dlp
 - Inside a built app, `pip install -U` can't update yt-dlp (general knowledge). Options: build and install again with a newer yt-dlp, or the app fetches a newer yt-dlp itself at start-up (docs/decisions.md, 2026-11-11 Reddit entry: "about once a week, if it's ever wanted").
+- The second is To do 21 since 2026-11-14 (before going public); its research goes into docs/research/yt-dlp-update.md.
 
 ## Signing
 - An unsigned `Setup.exe` downloaded from the internet gets SmartScreen's "Windows protected your PC". A file built on this PC carries no download mark, so SmartScreen shouldn't ask (general knowledge, not tested).

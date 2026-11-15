@@ -2,6 +2,15 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: The project goes public, after the app learns to update yt-dlp itself (To do 21)
+- **Decision:** the repo goes public once To do 21 (yt-dlp updates itself) and the "Before a public release" list in docs/todo.md are done; the license is MIT. Setup.exe as a GitHub Release download is on that list, asked again then.
+- **Reason:** the user wants the project public, like their other projects. Today only a new build updates yt-dlp, so a Setup.exe other people install would stop working for YouTube after its next change. The project's setup (2026-11-10) had no "Before a public release" list: its public-or-private answer wasn't written down, likely "private" (the Goal says "for one person").
+- **Who decided:** the user, on Claude's suggestions (2026-11-14).
+- **Rejected:**
+  - public now, code only, with no Setup.exe download (Claude's first suggestion): the user wants the update first
+  - staying private
+- **Reverses:** "the app updating yt-dlp itself" in the rejected list of the 2026-11-14 ".exe files" entry below.
+
 ## 2026-11-14: Setup and the uninstaller ask to close the open window first (AppMutex)
 - **Decision:** the window holds a mutex named `VideoDownloader.App` (the taskbar ID, `APP_ID`) until the process ends, taken by `main()` (`hold_mutex()`) just before the window is built, not by `start()`; setup.iss has `AppMutex={#TaskbarId}`, so Setup and the uninstaller show Inno's "is currently running" box (OK after closing the window, or Cancel) instead of going ahead. The project's window holds it too; test and screenshot windows don't. `CloseApplications=yes` stays. No `Global\` mutex. To do 20.
 - **Reason:** uninstalling with the window open left 44 files behind (measured, To do 11), and installing over it could mix old and new files. `AppMutex` is Inno's standard way and needs one call in the app; one name for both keeps the test that checks setup.iss's names as it is.
@@ -31,7 +40,7 @@ Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who d
   - a Start-menu shortcut to the project's `pythonw -m video_downloader`: far less work and `pip install -U` keeps working, but the daily app would run whatever code is in the project at the moment, half-finished steps included
   - one .exe without an installer: no Start-menu entry, no uninstall, the Chrome button set up by hand, a slower start
   - ffmpeg and Deno inside the app: bigger, and `winget upgrade` already updates them
-  - the app updating yt-dlp itself at start-up: more code (downloading and loading a newer yt-dlp, falling back when it breaks) for what one build command does; a Someday to-do if YouTube breaks the app often
+  - the app updating yt-dlp itself at start-up: more code (downloading and loading a newer yt-dlp, falling back when it breaks) for what one build command does; a Someday to-do if YouTube breaks the app often (reversed 2026-11-14: To do 21, before going public; entry above)
   - code signing: costs money every year; a Setup.exe built on this PC has no download mark, so SmartScreen shouldn't warn (general knowledge, not tested)
 - **Side effects:** after installing, the Chrome button starts the installed app (`python -m video_downloader.browser install` points it back at the project); the installed app and the project's share the pipe, so only one window runs at a time.
 
@@ -266,7 +275,7 @@ Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who d
   - keeping curl_cffi anyway: it might help some other site that checks how requests look, but none has come up
   - signing in now (browser cookies): on the "Later" list. When it's wanted: yt-dlp often can't read Chrome's or Edge's cookies on Windows, Firefox's work better (general knowledge then; checked in To do 5: right for Edge and Chrome on this PC, docs/research/signing-in.md)
   - reading the post's normal web page instead of its `.json`: that would be our own Reddit downloader, which the project rules out
-  - updating yt-dlp automatically when a download fails (asked during To do 4): the new version only loads after a restart, and most failures (private video, no internet) aren't fixed by an update. An update at start-up, about once a week, is the better shape if it's ever wanted; not a to-do yet.
+  - updating yt-dlp automatically when a download fails (asked during To do 4): the new version only loads after a restart, and most failures (private video, no internet) aren't fixed by an update. An update at start-up, about once a week, is the better shape if it's ever wanted; not a to-do yet (To do 21 since 2026-11-14).
 - **Install:** the user installed and removed curl_cffi; Claude Code's safety check refused installing it from a Claude session (as getting around a bot check).
 
 ## 2026-11-11: Plain messages when a download fails, found by matching yt-dlp's error text; ffmpeg checked before starting
