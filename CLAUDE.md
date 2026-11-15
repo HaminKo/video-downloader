@@ -37,6 +37,7 @@ Now and next: the "Where we are" block at the top of docs/todo.md.
 One line per decision to follow; reasons, who decided and what was rejected: docs/decisions.md.
 - Build on yt-dlp as a Python library; never write our own site downloaders. Desktop window first, a Chrome button later.
 - Goes public (MIT, LICENSE says "the video-downloader authors", never a person) after To do 21 (yt-dlp updates itself), through the "Before a public release" list in docs/todo.md.
+- Semantic versioning from 0.1.0: a release sets the number in CHANGELOG.md and pyproject.toml. CHANGELOG.md is Keep a Changelog without compare links (the repo URL names the account); each change users can see gets one plain line under Unreleased.
 - Chrome button: an unpacked extension + native messaging (Chrome's HKCU key, written by `python -m video_downloader.browser install`); links reach the open window through a named pipe as JSON (`send_bytes` and `json.loads`, never pickle); a link alone fills in the box, a link with choices (`--download mp3`) joins the list without touching the box or the front (a window opened for it starts minimized).
 - Chrome's helper is `host.py` and imports only `handoff` and `places`, never yt-dlp (it starts on every click); only web pages are sent; the button opens a popup with the window's choices (its own, kept in `chrome.storage.local`) that says when it worked or, in red, why not.
 - One window: `main()` takes the pipe before `tk.Tk()`; when another window has it, it hands over its link (with no link `{"show": true}`: that one to the front) and quits; `Listening` reads only from `start()`, once the window is built.
@@ -70,6 +71,7 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 ## Project docs
 - README.md: what it is, install and run, Credits.
 - docs/using.md: using the app in detail (moved out of the README 2026-11-12).
+- CHANGELOG.md: what changed in each version, for users.
 - docs/local.md: this PC's paths and copy-ready commands (gitignored).
 - docs/todo.md: the list and "Where we are"; docs/todo/: one file per to-do.
 - docs/archive/: finished to-dos' files, read only when a to-do names one.

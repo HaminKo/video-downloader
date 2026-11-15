@@ -15,7 +15,8 @@
 const HOST = "video_downloader";
 const NOT_A_WEB_PAGE = "Only web pages can be sent.";
 const NOT_INSTALLED =
-  "The helper isn't installed: run python -m video_downloader.browser install.";
+  "The helper isn't installed: run Video Downloader Setup again " +
+  "(from the project: python -m video_downloader.browser install).";
 const NO_ANSWER = "The helper gave no answer.";
 const SENDING = "Sending...";
 const ADDED = "Added to Video Downloader.";

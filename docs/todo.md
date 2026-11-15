@@ -31,9 +31,9 @@ Everything else, unordered (grouped by area once it grows). A Someday to-do move
 Starts once To do 21 is finished (the user, 2026-11-14: a Setup.exe that other people install must keep yt-dlp current). In this order:
 - ~~A license: add a LICENSE file, MIT (the user, 2026-11-14).~~ Done 2026-11-15: "the video-downloader authors", and a License line in the README (decisions.md).
 - ~~A screenshot of the window in the README (`python tests/gui/screenshots.py`).~~ Done 2026-11-15: the "history" screen as docs/images/window.png, under the README's first lines (decisions.md).
-- The README follows the "README" rule in ~/.claude/CLAUDE.md, checked with `/trim-readme` (it measures first and stops if the README already fits).
-- A fresh subagent that hasn't seen the project checks README.md and the docs it links against the code, and only reports; the user decides the fixes.
-- Start CHANGELOG.md (Keep a Changelog: Unreleased first, then versions newest first) with the first version.
+- ~~The README follows the "README" rule in ~/.claude/CLAUDE.md, checked with `/trim-readme` (it measures first and stops if the README already fits).~~ Done 2026-11-15: it fits, nothing moved. Measured: 73 lines, install at line 24, the longest section "Install and run" at 26 lines (the details already moved to docs/using.md on 2026-11-12).
+- ~~A fresh subagent that hasn't seen the project checks README.md and the docs it links against the code, and only reports; the user decides the fixes.~~ Done 2026-11-15: 13 findings, 10 fixed, 3 left (decisions.md).
+- ~~Start CHANGELOG.md (Keep a Changelog: Unreleased first, then versions newest first) with the first version.~~ Done 2026-11-15: version 0.1.0 (decisions.md).
 - Setup.exe as a download on a GitHub Release: ask the user first (suggested: yes, now that To do 21 keeps yt-dlp current). A downloaded, unsigned Setup.exe gets SmartScreen's warning (docs/research/installer.md, "Signing"), and the Chrome button is an unpacked extension, which others load in Chrome's developer mode; the README says both.
 - Last, so it sees every file written above: search all tracked files for the "Never in tracked files" list in CLAUDE.md. If old commits hold any of it (except the GitHub login, which old commits may hold), publish a new repo with one clean commit instead of rewriting history.
 - Then the user switches the repo to public.

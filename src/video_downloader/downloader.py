@@ -126,15 +126,15 @@ SIGN_IN = (
 # while the app used the sign-in file.
 REDDIT = (
     "Reddit only allows downloads when you're signed in. To sign in, see "
-    '"Signing in" in the README.'
+    "docs/signing-in.md."
 )
 REDDIT_REFUSED = (
     "Reddit didn't accept your sign-in: it may have run out, or the file isn't "
-    "Reddit's. Export Reddit's cookies again (README, \"Signing in\")."
+    "Reddit's. Export Reddit's cookies again (docs/signing-in.md)."
 )
 COOKIES_BROKEN = (
     "The sign-in file can't be read. Export Reddit's cookies again (format: "
-    'Netscape), or delete the file (README, "Signing in").'
+    "Netscape), or delete the file (docs/signing-in.md)."
 )
 BOT_CHECK = "YouTube wants to check you're not a bot. Try again later."
 RATE_LIMITED = "YouTube is limiting downloads for now. Try again in about an hour."

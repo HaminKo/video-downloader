@@ -7,7 +7,7 @@ It does not download from DRM-protected services (Netflix, Disney+, Spotify and 
 ![The Video Downloader window: a link box, MP4 or MP3 with quality and subtitles, and a list of past downloads with one in progress](docs/images/window.png)
 
 ## Status
-Downloading works, and when a download fails the window says why in plain words. Reddit works once you've signed in ([Signing in](docs/signing-in.md)). What comes next is in [docs/todo.md](docs/todo.md).
+Downloading works, and when a download fails the window says why in plain words. Reddit works once you've signed in ([Signing in](docs/signing-in.md)). What changed in each version is in [CHANGELOG.md](CHANGELOG.md), what comes next in [docs/todo.md](docs/todo.md).
 
 ## Using it
 Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, its quality (Best, 720p or 480p) and whether you want English subtitles, then press Download (or Enter).
@@ -22,13 +22,16 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, i
 Everything in detail: [Using the app](docs/using.md).
 
 ## Install and run
-Needs Windows, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com). You build the installer yourself, which needs Python 3.13 or newer and [Inno Setup](https://jrsoftware.org/isinfo.php). All commands are for PowerShell, in the project folder.
+Needs Windows, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com). You build the installer yourself, which needs Python 3.13 and [Inno Setup](https://jrsoftware.org/isinfo.php). All commands are for PowerShell, in the project folder.
 
-1. Install ffmpeg (yt-dlp's own build, which patches some ffmpeg bugs that affect yt-dlp), Deno and Inno Setup:
+Get the project first: on its GitHub page, **Code > Download ZIP**, then extract it (or `git clone` it), and open its folder in PowerShell.
+
+1. Install ffmpeg (yt-dlp's own build, which patches some ffmpeg bugs that affect yt-dlp), Deno, Inno Setup and Python 3.13:
    ```powershell
    winget install --id yt-dlp.FFmpeg -e
    winget install --id DenoLand.Deno -e
    winget install --id JRSoftware.InnoSetup -e
+   winget install --id Python.Python.3.13 -e
    ```
    Then restart VS Code (or your terminal) so it sees the new programs.
 2. Create the virtual environment and install the app's code with its tools:
@@ -52,14 +55,15 @@ Run the app straight from the project, with the `.venv` active: `python -m video
 
 Checks, with the `.venv` active: `ruff check .` and `ruff format .` (lint and formatting), `pytest` (tests), `pyright` (type check).
 
-`pytest` needs ffmpeg: two tests download a 1-second clip from a small web server they start on this PC (never the internet).
+`pytest` needs ffmpeg for the download tests: they download a 1-second clip from a small web server they start on this PC (never the internet). Without ffmpeg they are skipped.
 
 The build: `python installer/build.py` updates yt-dlp, builds the app into `dist\Video Downloader\` (`Video Downloader.exe` there starts it without installing) and makes `dist\Video Downloader Setup.exe` from it. `--no-update` leaves yt-dlp as it is.
 
-GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 seconds, types a link, presses Enter and clicks Download, and checks what the window shows; a fake download stands in for yt-dlp. Screenshots: `python tests/gui/screenshots.py` (or one screen by name, e.g. `done`) saves them to the temp folder and prints the paths. Both bring the window to the front and take the keyboard focus while they run; keys typed then are ignored. How they work: [docs/research/gui-testing.md](docs/research/gui-testing.md).
+GUI test: `pytest tests/gui/window_gui.py` (about 45 seconds) opens the real window, types a link, presses Enter and clicks Download, and checks what the window shows; a fake download stands in for yt-dlp. Screenshots: `python tests/gui/screenshots.py` (or one screen by name, e.g. `done`) saves them to the temp folder and prints the paths. Both open the window on top, on another screen if there is one, and don't take your keyboard; keys and clicks in their window are ignored. How they work: [docs/research/gui-testing.md](docs/research/gui-testing.md). The Chrome button's popup has its own test, `pytest tests/gui/popup_gui.py`, which needs Chrome and shows nothing on screen.
 
 ## Credits
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) by the yt-dlp contributors, Unlicense: does all the downloading.
+- The libraries yt-dlp installs with it, which the built app includes, each by its own authors: [requests](https://github.com/psf/requests) (Apache 2.0), [urllib3](https://github.com/urllib3/urllib3) (MIT), [certifi](https://github.com/certifi/python-certifi) (MPL 2.0), [mutagen](https://github.com/quodlibet/mutagen) (GPL 2.0 or later), [pycryptodomex](https://github.com/Legrandin/pycryptodome) (BSD and public domain), [brotli](https://github.com/google/brotli) (MIT), [websockets](https://github.com/python-websockets/websockets) (BSD 3-Clause), [idna](https://github.com/kjd/idna) (BSD 3-Clause) and [charset-normalizer](https://github.com/jawah/charset_normalizer) (MIT).
 - [FFmpeg](https://ffmpeg.org) by the FFmpeg developers, LGPL 2.1+ or GPL 2+ depending on the build (the suggested [yt-dlp build](https://github.com/yt-dlp/FFmpeg-Builds) is GPL): joins video and audio, converts to MP3 and converts subtitles to SRT.
 - [yt-dlp-ejs](https://github.com/yt-dlp/ejs) by Simon Sawicki and the yt-dlp contributors, Unlicense with bundled MIT and ISC parts: installed with yt-dlp, solves YouTube's JavaScript challenges together with Deno.
 - [Deno](https://deno.com) by the Deno authors, MIT: the JavaScript runtime yt-dlp needs for YouTube.

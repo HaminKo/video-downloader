@@ -2,6 +2,28 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-15: Semantic versioning from 0.1.0; CHANGELOG.md in Keep a Changelog format
+- **Decision:** CHANGELOG.md in the repo root follows Keep a Changelog 1.1.0: Unreleased first, then versions newest first, each headed `## [X.Y.Z] - YYYY-MM-DD`. The first version is 0.1.0, dated 2026-11-15, one "Added" list of what the app does; if the repo goes public on another day, that date changes to it. The number is the one pyproject.toml already had; a release changes both. Each change users can see gets one plain-language line under Unreleased (finish-step). The README's Status line links it.
+- **Reason:** the user's own choices for vlc-autofolder the day before (0.1.0, the day's date, no compare links), for the same "Before a public release" item. 0.x matches pyproject.toml. Dating it now means no extra step on release day if nothing changes before then.
+- **Who decided:** Claude, following the user's vlc-autofolder decisions; the user said "move on" to this item.
+- **Left for the Setup.exe item:** Settings > Apps shows the build's date and time as the app's version (setup.iss `AppVersion`), not 0.1.0. Changing it means a build and an install test, so it waits for the Setup.exe-on-a-Release item. The Chrome extension's own version (manifest.json, 1.1) stays separate: Chrome uses it.
+- **Rejected:**
+  - 1.0.0: pyproject.toml says 0.1.0, and the user chose 0.x for vlc-autofolder
+  - keeping everything under Unreleased until release day: a step to remember later
+  - the compare links Keep a Changelog puts at the bottom (`[0.1.0]: https://github.com/...`): the repo URL names the personal account (CLAUDE.md "Never in tracked files"), so the headings stay plain text
+  - one entry per built to-do: the history is in git and docs/archive; a first version lists what it can do
+
+## 2026-11-15: Pre-release docs review: what was fixed and what was left
+- **Decision:** a fresh subagent checked README.md, docs/using.md and docs/signing-in.md against the code (13 findings; all 19 relative links and their anchors were fine). Fixed:
+  - the three sign-in messages in the window (downloader.py `REDDIT`, `REDDIT_REFUSED`, `COOKIES_BROKEN`) pointed to a "Signing in" section in the README that no longer exists; they now name docs/signing-in.md;
+  - the popup's "helper isn't installed" message gave only the project's Python command; it now says to run Setup again first;
+  - README: Python 3.13 exactly (step 2 runs `py -3.13`, so "3.13 or newer" got a 3.14-only PC stuck) and installed with winget in step 1; a "get the project" line before step 1; the download tests' count and that they are skipped without ffmpeg; the GUI test's time (about 45 s, not 5) and that it doesn't take the keyboard; the popup's GUI test; a Credits line for the libraries yt-dlp installs with it;
+  - docs/using.md: "in the terminal" only when run from the project (the installed app has no console); the list of plain failure messages now has all of them.
+- **Left as they are:** "Downloads folder" is always `Path.home() / "Downloads"`, even when the user moved Windows' Downloads folder elsewhere (rare); "H.264 + AAC, plays everywhere" is yt-dlp's preference, not a guarantee on a site without H.264; offline, the yt-dlp check runs at every start, not once a day (written down in the 2026-11-14 entry).
+- **Reason:** the ones left are true for nearly everyone, and the README should stay short. Measured for the Credits line: the built app includes all nine libraries (requests, urllib3, certifi, mutagen, pycryptodomex, brotli, websockets, idna, charset-normalizer; in build/pyinstaller's `PYZ-00.toc`), licenses read from their metadata in the `.venv`. One of them, mutagen, is GPL 2.0 or later, which matters for the Setup.exe download (the "Before a public release" item).
+- **Who decided:** the user, taking Claude's suggestions (fix 10, leave 3).
+- **Rejected** (Claude, while fixing): a GitHub URL in the sign-in messages: it holds the GitHub login (CLAUDE.md "Never in tracked files"); the file's name is enough, as the README links it.
+
 ## 2026-11-15: The README's picture is the "history" screenshot, docs/images/window.png
 - **Decision:** the README shows one picture of the window, right under its first lines: the "history" screen of `python tests/gui/screenshots.py`, copied by hand to docs/images/window.png. When the window's look changes, it is taken and copied again (CLAUDE.md "Docs to update"). Second item of "Before a public release" (docs/todo.md).
 - **Reason:** of the window's screens, "history" shows the most at once: MP4 and MP3, the three qualities, subtitles, past downloads and one in progress. Its titles are made up by the test, and no screen shows a personal path (the status line says "Downloads\Videos", checked). 903 × 571 px, 19 KB.

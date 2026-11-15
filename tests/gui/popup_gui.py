@@ -22,7 +22,8 @@ OK = {"ok": True}
 VIDEO_CHOICES = ["quality-best", "quality-720p", "quality-480p", "subtitles"]
 BUTTONS = ["download", "open", "cancel"]
 NOT_INSTALLED = (
-    "The helper isn't installed: run python -m video_downloader.browser install."
+    "The helper isn't installed: run Video Downloader Setup again "
+    "(from the project: python -m video_downloader.browser install)."
 )
 
 
