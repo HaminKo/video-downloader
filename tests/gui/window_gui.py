@@ -495,17 +495,39 @@ def test_long_message_wraps_instead_of_widening(app: App) -> None:
     assert_inside_window(app.show_button)
 
 
-def test_a_newer_ytdlp_gets_a_line_under_the_buttons(app: App) -> None:
+def test_a_newer_ytdlp_gets_a_line_under_the_buttons(
+    app: App, fake: FakeDownload
+) -> None:
     height = app.root.winfo_height()
     app.look_for_update(lambda: "2099.1.1")  # as ytdlp_update.check() after a download
-    wait_until(app, app.update_label.winfo_ismapped, "the update line")
+    wait_until(app, app.update_line.winfo_ismapped, "the update line")
     app.root.update()
     assert app.update_label.cget("text") == UPDATED.format(version="2099.1.1")
     assert_inside_window(app.update_label)
+    assert_inside_window(app.restart_button)
     assert box(app.update_label)[1] >= box(app.play_button)[3], (
         "the update line should be under the buttons"
     )
+    assert box(app.restart_button)[0] >= box(app.update_label)[2], (
+        "Restart now should be right of the text"
+    )
+    assert box(app.restart_button)[2] == box(app.cancel_button)[2], (
+        "Restart now should line up with Cancel"
+    )
     assert app.root.winfo_height() > height, "the window didn't grow for the line"
+
+    # Greyed out while a download runs: a restart would stop it.
+    type_text(app.link_entry, LINK)
+    press(app.link_entry, "Return")
+    wait_for_progress(app, "Enter in the link box")
+    assert app.restart_button.instate(["disabled"])
+    click(app.restart_button)
+    assert not app.restart, "Restart now worked during a download"
+    finish(app, fake)
+    assert not app.restart_button.instate(["disabled"])
+    # main() starts the app again once the event loop ends (not running here).
+    click(app.restart_button)
+    assert app.restart, "Restart now did nothing"
 
 
 def test_no_newer_ytdlp_gets_no_line(app: App) -> None:
@@ -513,7 +535,7 @@ def test_no_newer_ytdlp_gets_no_line(app: App) -> None:
     app.look_for_update(lambda: None)  # nothing new, no internet, from the project
     wait_until(app, lambda: not app.next_update_check, "the check to end")
     app.root.update()
-    assert app.update_label.winfo_manager() == "", "the update line was placed"
+    assert app.update_line.winfo_manager() == "", "the update line was placed"
     assert app.root.winfo_height() == height
 
 

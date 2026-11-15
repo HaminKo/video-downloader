@@ -229,6 +229,28 @@ def test_the_window_gets_a_fresh_path(monkeypatch: pytest.MonkeyPatch) -> None:
     assert options["stdout"] == subprocess.DEVNULL
 
 
+def test_restart_now_starts_the_app_the_same_way(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The window's Restart now (app.main()): no link, detached as for Chrome."""
+    started: list[tuple[list[object], dict[str, object]]] = []
+    monkeypatch.setattr(
+        host.subprocess,
+        "Popen",
+        lambda command, **options: started.append((command, options)),
+    )
+    monkeypatch.setattr(host, "fresh_path", lambda: r"C:\Fresh")
+    host.start_app([])
+    [(command, options)] = started
+    pythonw = str(Path(sys.executable).with_name("pythonw.exe"))
+    assert command == [pythonw, "-m", "video_downloader"]
+    assert options["creationflags"] == (
+        subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    )
+    env = options["env"]
+    assert isinstance(env, dict) and env["PATH"] == r"C:\Fresh"
+
+
 @pytest.mark.parametrize(
     "start", [None, Choices("mp3"), Choices("mp4", "480p", True)], ids=str
 )
@@ -244,6 +266,7 @@ def test_the_window_opened_gets_the_link_and_choices(
         return SimpleNamespace(
             root=SimpleNamespace(mainloop=lambda: None),
             look_for_update=lambda check: None,  # never the real check
+            restart=False,  # closed without Restart now
         )
 
     monkeypatch.setattr(app, "start", fake_start)

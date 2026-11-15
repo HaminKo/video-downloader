@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from video_downloader import handoff, ytdlp_update
+from video_downloader import handoff, host, ytdlp_update
 from video_downloader.app import (
     APP_ID,
     ASK_ABOVE,
@@ -1246,10 +1246,10 @@ def test_the_update_line_shows_once_the_check_has_a_version(app: App) -> None:
 
     app.look_for_update(check)
     assert app.next_update_check, "the window looks again later"
-    assert app.update_label.winfo_manager() == "", "no line before the check ends"
+    assert app.update_line.winfo_manager() == "", "no line before the check ends"
     release.set()
     wait_for_the_update_check(app)
-    assert app.update_label.winfo_manager() == "grid"
+    assert app.update_line.winfo_manager() == "grid"
     assert app.update_label.cget("text") == UPDATED.format(version="2099.1.1")
 
 
@@ -1259,7 +1259,44 @@ def test_a_failing_update_check_shows_no_line(app: App) -> None:
 
     app.look_for_update(check)
     wait_for_the_update_check(app)
-    assert app.update_label.winfo_manager() == ""
+    assert app.update_line.winfo_manager() == ""
+
+
+def test_restart_now_is_greyed_out_while_a_download_runs(
+    app: App, fake: FakeDownload
+) -> None:
+    app.look_for_update(lambda: "2099.1.1")
+    wait_for_the_update_check(app)
+    assert app.update_line.winfo_manager() == "grid"
+    assert not app.restart_button.instate(["disabled"]), "nothing to stop"
+    fake.wait_for_cancel = {LINK}
+    add(app, LINK)
+    add(app, LINK2)  # waits behind the first
+    assert app.restart_button.instate(["disabled"])
+    app.cancel_button.invoke()  # the second starts once the first has ended
+    assert app.restart_button.instate(["disabled"]), "a link still waits"
+    wait_until_done(app)
+    assert [call[0] for call in fake.calls] == [LINK, LINK2]
+    assert not app.restart_button.instate(["disabled"])
+
+
+def test_restart_now_ends_the_event_loop(app: App) -> None:
+    """main() starts the app again once mainloop() has returned."""
+    app.look_for_update(lambda: "2099.1.1")
+    wait_for_the_update_check(app)
+    assert not app.restart
+    timed_out: list[bool] = []
+
+    def time_out() -> None:  # if the click doesn't end it
+        timed_out.append(True)
+        app.root.quit()
+
+    app.root.after(0, app.restart_button.invoke)
+    stop = app.root.after(5000, time_out)
+    app.root.mainloop()
+    app.root.after_cancel(stop)
+    assert app.restart
+    assert not timed_out, "the click didn't end the event loop"
 
 
 @pytest.fixture
@@ -1268,7 +1305,8 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, object]]]
     mutexes held by then ("held"; not made, or this test run would hold the
     app's) and the yt-dlp update checks it was given ("checks"; not run).
     The pipe each one took stays taken until the test ends, as by a window
-    still being built (it reads only once it is built)."""
+    still being built (it reads only once it is built). Each window is
+    closed without Restart now, so the app is never started again."""
     calls: list[dict[str, object]] = []
     held: list[str] = []
 
@@ -1276,11 +1314,17 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, object]]]
         checks: list[object] = []
         calls.append(options | {"held": held.copy(), "checks": checks})
         return SimpleNamespace(
-            root=SimpleNamespace(mainloop=lambda: None), look_for_update=checks.append
+            root=SimpleNamespace(mainloop=lambda: None),
+            look_for_update=checks.append,
+            restart=False,
         )
+
+    def no_restart(arguments: list[str]) -> None:
+        raise AssertionError("the app was started again without Restart now")
 
     monkeypatch.setattr("video_downloader.app.start", fake_start)
     monkeypatch.setattr("video_downloader.app.hold_mutex", held.append)
+    monkeypatch.setattr(host, "start_app", no_restart)
     yield calls
     for options in calls:
         if isinstance(listening := options["listening"], handoff.Listening):
@@ -1355,6 +1399,32 @@ def test_main_without_a_link_opens_an_empty_window(
     [options] = opened
     assert took_the_pipe(options)
     assert (options["link"], options["choices"]) == ("", None)
+
+
+def test_main_starts_the_app_again_after_restart_now(
+    monkeypatch: pytest.MonkeyPatch, opened: list[dict[str, object]]
+) -> None:
+    """The window is closed first, so the new one gets the pipe; the new one
+    gets no link."""
+    steps: list[object] = []
+
+    def fake_start(**options: object) -> SimpleNamespace:
+        opened.append(options)  # its pipe is closed when the test ends
+        window = SimpleNamespace(look_for_update=lambda check: None, restart=False)
+
+        def mainloop() -> None:  # the user clicks Restart now
+            steps.append("event loop")
+            window.restart = True
+
+        window.root = SimpleNamespace(
+            mainloop=mainloop, destroy=lambda: steps.append("closed")
+        )
+        return window
+
+    monkeypatch.setattr("video_downloader.app.start", fake_start)
+    monkeypatch.setattr(host, "start_app", steps.append)
+    main([])
+    assert steps == ["event loop", "closed", []]
 
 
 def test_two_windows_started_at_once_end_in_one(

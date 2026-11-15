@@ -111,9 +111,9 @@ def received(app: App, fake: FakeDownload) -> None:
 
 def updated(app: App, fake: FakeDownload) -> None:
     """The built app has downloaded a newer yt-dlp: a line under the buttons
-    says to reopen the app."""
+    says to restart the app, with a Restart now button."""
     app.look_for_update(lambda: "2026.11.20")
-    wait_until(app, app.update_label.winfo_ismapped, "the update line")
+    wait_until(app, app.update_line.winfo_ismapped, "the update line")
 
 
 SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {

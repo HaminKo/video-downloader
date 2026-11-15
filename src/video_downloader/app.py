@@ -1,7 +1,8 @@
 """The main window: a link box, Download and Cancel buttons, MP4 or MP3, the
 video quality, English subtitles, the list of downloads, progress, a status
 line, and Play, Show in folder and Remove buttons. Under them, once the
-built app has downloaded a newer yt-dlp for its next start, a line says so.
+built app has downloaded a newer yt-dlp for its next start, a line says so,
+with a Restart now button.
 
 Links wait in the list and download one after another. The bar, the status
 line and the buttons under them are about the selected row. The list starts
@@ -34,7 +35,7 @@ from enum import StrEnum
 from pathlib import Path
 from tkinter import font, messagebox, ttk
 
-from video_downloader import downloader, handoff, places, ytdlp_update
+from video_downloader import downloader, handoff, host, places, ytdlp_update
 from video_downloader.browser import EXTENSION_FOLDER
 from video_downloader.downloader import (
     Cancelled,
@@ -73,8 +74,8 @@ SOME_WITHOUT_SUBTITLES = "No English subtitles for {count} of the videos."
 GONE = "Can't play {name}: it isn't in {folder} anymore."
 LINK_RECEIVED = "Link received: choose MP4 or MP3, then Download."
 # Under everything else, once the built app has downloaded a newer yt-dlp
-# (look_for_update()).
-UPDATED = "yt-dlp was updated to {version}. Close and reopen the app to use it."
+# (look_for_update()), next to the Restart now button.
+UPDATED = "yt-dlp was updated to {version}. Restart the app to use it."
 
 # A playlist with more videos than this is downloaded only after a Yes in a
 # box (ask_yes_no()): a channel can have thousands.
@@ -257,6 +258,7 @@ class App:
         self.cancels: queue.Queue[tuple[str, Future[handoff.Answer]]] = queue.Queue()
         self.next_link_check = ""  # the scheduled check_links()
         self.next_update_check = ""  # the scheduled show_update()
+        self.restart = False  # Restart now was clicked: main() starts the app
         self.listening = listening
         self.ask = ask
         # Questions from the running download (confirm_playlist()): the box's
@@ -400,10 +402,20 @@ class App:
         )
         self.remove_button.grid(row=0, column=2)
 
-        # UPDATED, under everything else: placed only once there is a newer
-        # yt-dlp (show_update()), so the window has no empty line otherwise.
-        self.update_label = ttk.Label(frame, justify="left")
+        # UPDATED and Restart now, under everything else: placed only once
+        # there is a newer yt-dlp (show_update()), so the window has no empty
+        # line otherwise. The text wraps; the button stays at the right, under
+        # Download and Cancel. Greyed out while a download runs, as a restart
+        # would stop it and drop the links waiting behind it.
+        self.update_line = ttk.Frame(frame)
+        self.update_line.columnconfigure(0, weight=1)
+        self.update_label = ttk.Label(self.update_line, justify="left")
+        self.update_label.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.update_label.bind("<Configure>", self.wrap)
+        self.restart_button = ttk.Button(
+            self.update_line, text="Restart now", command=self.restart_now
+        )
+        self.restart_button.grid(row=0, column=1)
 
         # Only now: update_states() uses every widget above.
         self.kind.trace_add("write", lambda *_: self.update_states())
@@ -797,8 +809,9 @@ class App:
         self.show_update(result)
 
     def show_update(self, result: Future[str | None]) -> None:
-        """Show UPDATED under everything else once look_for_update()'s check
-        has found a version; until it has ended, look every CHECK_EVERY ms."""
+        """Show UPDATED and Restart now under everything else once
+        look_for_update()'s check has found a version; until it has ended,
+        look every CHECK_EVERY ms."""
         if not result.done():
             self.next_update_check = self.root.after(
                 CHECK_EVERY, self.show_update, result
@@ -808,10 +821,17 @@ class App:
         version = None if result.exception() else result.result()
         if version:
             self.update_label.configure(text=UPDATED.format(version=version))
-            self.update_label.grid(
+            self.update_line.grid(
                 row=9, column=0, columnspan=2, sticky="ew", pady=(8, 0)
             )
             self.fit_height_soon()
+
+    def restart_now(self) -> None:
+        """Restart now: end the window's event loop; main() then closes the
+        window and starts the app again, which loads the newer yt-dlp. Does
+        nothing while the event loop isn't running (the tests)."""
+        self.restart = True
+        self.root.quit()
 
     def fit_height_soon(self) -> None:
         """Run fit_height() once Tk has worked out the new layout."""
@@ -836,13 +856,15 @@ class App:
     def update_states(self) -> None:
         """Grey out what can't be used now: Cancel unless a download is
         running (once), the video quality and subtitles while MP3 is chosen,
-        Play unless the selected row has a file, and Remove unless a row is
-        selected that isn't running."""
+        Play unless the selected row has a file, Remove unless a row is
+        selected that isn't running, and Restart now while a download runs
+        (links wait only behind a running one)."""
         job = self.jobs.get(self.running)
         enabled: dict[ttk.Widget, bool] = {
             self.cancel_button: job is not None and job.state is State.DOWNLOADING,
             self.play_button: self.selected_file() is not None,
             self.remove_button: self.selected() not in ("", self.running),
+            self.restart_button: not self.busy,
         }
         video = self.kind.get() == Kind.MP4
         for widget in (self.quality_label, *self.quality_buttons, self.subtitles_box):
@@ -1105,6 +1127,11 @@ def main(arguments: list[str] | None = None) -> None:
     # doesn't look).
     app.look_for_update(ytdlp_update.check)
     app.root.mainloop()
+    # Restart now: close the window first, which frees the pipe for the new
+    # one, then start it. This process ends right after (its mutex with it).
+    if app.restart:
+        app.root.destroy()
+        host.start_app([])
 
 
 def hold_mutex(name: str) -> int | None:

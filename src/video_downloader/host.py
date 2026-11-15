@@ -15,6 +15,7 @@ Native messaging: a message is UTF-8 JSON after its length in 4 bytes (this
 PC's byte order), on stdin and stdout, which Python opens in binary mode on
 Windows (docs/research/browser-button.md). This module imports nothing slow
 (only handoff and places, never yt-dlp), so a click gets its answer quickly.
+The window's Restart now starts the app the same way (start_app()).
 """
 
 import json
@@ -120,19 +121,25 @@ def window_arguments(link: str, start: handoff.Choices | None) -> list[str]:
     return [*options, "--", link]
 
 
-def start_window(link: str, start: handoff.Choices | None) -> None:
-    """Start the app with the link in its box, or downloading it with the
-    choices (window_arguments), without a console (places.app_command), with
-    a fresh PATH (fresh_path). It gets none of Chrome's pipes (DEVNULL), so
-    it lives on after this helper and after Chrome."""
+def start_app(arguments: list[str]) -> None:
+    """Start the app with these arguments (main()'s), without a console
+    (places.app_command), with a fresh PATH (fresh_path). It gets none of the
+    starter's pipes (DEVNULL), so it lives on after the program that started
+    it: this helper and Chrome, or the window's Restart now (app.main())."""
     subprocess.Popen(
-        [*places.app_command(), *window_arguments(link, start)],
+        [*places.app_command(), *arguments],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
         env={**os.environ, "PATH": fresh_path()},
     )
+
+
+def start_window(link: str, start: handoff.Choices | None) -> None:
+    """Start the app with the link in its box, or downloading it with the
+    choices (window_arguments)."""
+    start_app(window_arguments(link, start))
 
 
 # Opens the app's window with a link, and choices to download it with or None.
