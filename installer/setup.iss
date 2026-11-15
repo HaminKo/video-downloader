@@ -16,9 +16,13 @@
 #define TaskbarId "VideoDownloader.App"
 #define ChromeKey "Software\Google\Chrome\NativeMessagingHosts\video_downloader"
 #define HostManifest "host.json"
-; The build's date and time, so Settings > Apps shows which build is
-; installed (also of two built on one day).
-#define Version GetDateTimeString('yyyy/mm/dd hh:nn', '.', ':')
+; The app's version number (pyproject.toml's), passed in by build.py, then
+; the build's date and time, so Settings > Apps also shows which build is
+; installed (of two built on one day too): "0.1.0 (2026.11.15 12:15)".
+#ifndef AppNumber
+  #error Run installer/build.py: it passes the app's version (/DAppNumber=...)
+#endif
+#define Version AppNumber + " (" + GetDateTimeString('yyyy/mm/dd hh:nn', '.', ':') + ")"
 
 [Setup]
 ; Never change AppId: Windows knows the installed app by it, so a newer
@@ -26,6 +30,8 @@
 AppId={{52EB16AF-7AAF-42C0-8CAB-4D7F7D143950}
 AppName={#AppName}
 AppVersion={#Version}
+; Setup.exe's own file version (its Properties > Details): numbers only.
+VersionInfoVersion={#AppNumber}
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExe}
 PrivilegesRequired=lowest

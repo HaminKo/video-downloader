@@ -8,6 +8,7 @@
 #   it talks to Chrome through stdin and stdout; Chrome starts it hidden.
 # yt-dlp's own PyInstaller hook adds the modules yt-dlp loads by name and the
 # JavaScript files YouTube needs (docs/research/installer.md).
+import re
 from pathlib import Path
 
 from PyInstaller.utils.hooks import copy_metadata
@@ -16,11 +17,26 @@ from video_downloader.places import APP_EXE, APP_NAME, HELPER_EXE
 
 HERE = Path(SPECPATH)
 ICON = str(HERE.parent / "build" / "icon.ico")  # made by build.py
+# The top-level modules both .exe files include, one per line, for the
+# licenses build.py lists (THIRD-PARTY-LICENSES.txt).
+MODULES = HERE.parent / "build" / "modules.txt"
 
 # yt-dlp's dist-info, so the app can tell the bundled yt-dlp's version
-# without importing it (ytdlp_update.bundled_version()).
-app = Analysis([str(HERE / "start_app.py")], datas=copy_metadata("yt-dlp"))
+# without importing it (ytdlp_update.bundled_version()). mutagen (GPL) only
+# embeds thumbnails into files, which the app never asks yt-dlp to do; yt-dlp
+# runs without it.
+app = Analysis(
+    [str(HERE / "start_app.py")],
+    datas=copy_metadata("yt-dlp"),
+    excludes=["mutagen"],
+)
 helper = Analysis([str(HERE / "start_helper.py")])
+
+# Modules by dotted name (yt_dlp.utils), compiled parts by path
+# (Cryptodome\Cipher\_raw_aes.pyd, _brotli.cp313-win_amd64.pyd).
+included = [*app.pure, *helper.pure, *app.binaries, *helper.binaries]
+top_level = {re.split(r"[./\\]", name)[0] for name, *_ in included}
+MODULES.write_text("\n".join(sorted(top_level)) + "\n", encoding="utf-8")
 
 # upx=False: packed .exe files trip antivirus programs more often.
 app_exe = EXE(

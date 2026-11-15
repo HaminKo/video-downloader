@@ -7,18 +7,25 @@ It updates yt-dlp first (YouTube changes often; the built app then fetches
 newer releases by itself, ytdlp_update.py; --no-update skips this), makes
 the icon from the window's PNGs, runs PyInstaller
 (installer/video-downloader.spec), adds the
-Chrome extension's folder and the helper's manifest (host.json) next to the
-.exe files, and makes the installer with Inno Setup (installer/setup.iss).
+Chrome extension's folder, the helper's manifest (host.json) and the
+licenses (the app's own and those of what it includes) next to the .exe
+files, and makes the installer with Inno Setup (installer/setup.iss), whose
+version is pyproject.toml's.
 The app ends up in dist/Video Downloader/, its installer in
 dist/Video Downloader Setup.exe; build/ holds PyInstaller's work files.
 """
 
 import argparse
 import contextlib
+import importlib.metadata
+import platform
+import re
 import shutil
 import subprocess
 import sys
+import tomllib
 import winreg
+from collections.abc import Iterable
 from pathlib import Path
 
 from PIL import Image
@@ -36,7 +43,16 @@ SETUP_SCRIPT = PROJECT / "installer" / "setup.iss"
 BUILD = PROJECT / "build"
 DIST = PROJECT / "dist"
 ICON = BUILD / "icon.ico"  # the spec and setup.iss read it from here
+MODULES = BUILD / "modules.txt"  # the spec writes it
 SETUP = DIST / f"{APP_NAME} Setup.exe"  # setup.iss's OutputBaseFilename
+PYPROJECT = PROJECT / "pyproject.toml"
+LICENSE = PROJECT / "LICENSE"
+THIRD_PARTY = "THIRD-PARTY-LICENSES.txt"
+
+# A library's license files, in its .dist-info folder (also in licenses\
+# there, PEP 639): pycryptodomex's license names its AUTHORS file.
+LICENSE_FILE = re.compile(r"(LICEN[CS]E|COPYING|NOTICE|AUTHORS)\b", re.IGNORECASE)
+RULE = "=" * 78
 
 # Inno Setup's own entry in Settings > Apps, for this user or all users (for
 # all users in the registry's 32-bit part when its Setup was 32-bit).
@@ -80,6 +96,82 @@ def add_files(app: Path) -> None:
     browser.write_manifest(app, Path(HELPER_EXE))
 
 
+def app_version() -> str:
+    """The app's version, pyproject.toml's (CHANGELOG.md's newest)."""
+    with PYPROJECT.open("rb") as file:
+        return tomllib.load(file)["project"]["version"]
+
+
+def bundled_libraries(
+    modules: Iterable[str],
+) -> list[importlib.metadata.Distribution]:
+    """The installed libraries these top-level modules come from, by name.
+    The standard library's modules and the app's own come from none."""
+    owners = importlib.metadata.packages_distributions()
+    names = {name for module in modules for name in owners.get(module, [])}
+    names.discard("video-downloader")
+    return [
+        importlib.metadata.distribution(name) for name in sorted(names, key=str.lower)
+    ]
+
+
+def license_texts(library: importlib.metadata.Distribution) -> list[str]:
+    files = sorted(
+        file
+        for file in library.files or []
+        if file.parts[0].endswith(".dist-info") and LICENSE_FILE.match(file.name)
+    )
+    if not files:
+        # A new library yt-dlp needs: look up its license, then list it here.
+        raise SystemExit(
+            f"{library.name} has no license file in its .dist-info folder, so "
+            f"{THIRD_PARTY} can't include it (installer/build.py)."
+        )
+    return [file.read_text(encoding="utf-8").strip() for file in files]
+
+
+def third_party_licenses(libraries: list[importlib.metadata.Distribution]) -> str:
+    """The text of THIRD-PARTY-LICENSES.txt: the licenses of Python (with
+    the parts python.org's build includes), Tcl/Tk (tkinter's) and each
+    library, in full."""
+    python = Path(sys.base_prefix)
+    tk = next(python.glob("tcl/tk*/license.terms"), None)
+    if tk is None:
+        raise SystemExit(f"Tcl/Tk's license.terms isn't in {python / 'tcl'}.")
+    sections = [
+        (
+            f"Python {platform.python_version()}",
+            [(python / "LICENSE.txt").read_text(encoding="utf-8").strip()],
+        ),
+        (
+            f"Tcl/Tk {tk.parent.name.removeprefix('tk')}",
+            [tk.read_text(encoding="utf-8").strip()],
+        ),
+        *(
+            (f"{library.name} {library.version}", license_texts(library))
+            for library in libraries
+        ),
+    ]
+    parts = [
+        f"{APP_NAME} includes the software below, each under its own license.\n"
+        "The app's own license is in LICENSE.txt."
+    ]
+    for title, texts in sections:
+        parts.append(f"{RULE}\n{title}\n{RULE}")
+        parts.extend(texts)
+    return "\n\n".join(parts) + "\n"
+
+
+def add_licenses(app: Path, modules: Iterable[str]) -> None:
+    """The app's own license, and those of what it includes (the modules'
+    libraries, Python and Tcl/Tk), next to the .exe files."""
+    shutil.copyfile(LICENSE, app / "LICENSE.txt")
+    libraries = bundled_libraries(modules)
+    (app / THIRD_PARTY).write_text(third_party_licenses(libraries), encoding="utf-8")
+    names = ", ".join(library.name for library in libraries)
+    print(f"Licenses in {THIRD_PARTY}: Python, Tcl/Tk, {names}")
+
+
 def make_icon(path: Path) -> None:
     """The .exe files' icon: the window's PNGs (extension/icons, named by
     their size), one per size, in one .ico: each size as drawn, not scaled
@@ -111,6 +203,7 @@ def main(arguments: list[str] | None = None) -> None:
     if not options.no_update:
         run(sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp[default]")
     make_icon(ICON)
+    MODULES.unlink(missing_ok=True)  # never an older build's
     # PyInstaller empties dist/Video Downloader/ first (--noconfirm: without
     # asking).
     run(
@@ -126,9 +219,11 @@ def main(arguments: list[str] | None = None) -> None:
     )
     app = DIST / APP_NAME
     add_files(app)
+    add_licenses(app, MODULES.read_text(encoding="utf-8").split())
     megabytes = folder_size(app) / 1_000_000
     print(f"Built {app / APP_EXE} ({megabytes:.0f} MB in all)")
-    run(str(compiler), "/Q", str(SETUP_SCRIPT))  # /Q: only errors
+    # /Q: only errors. setup.iss adds the build's date and time to the version.
+    run(str(compiler), "/Q", f"/DAppNumber={app_version()}", str(SETUP_SCRIPT))
     megabytes = SETUP.stat().st_size / 1_000_000
     print(f"Built {SETUP} ({megabytes:.0f} MB); run it to install the app")
 

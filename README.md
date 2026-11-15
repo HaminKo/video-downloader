@@ -22,11 +22,28 @@ Paste a link, choose **Video (MP4)** or **Audio only (MP3)** and, for a video, i
 Everything in detail: [Using the app](docs/using.md).
 
 ## Install and run
-Needs Windows, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com). You build the installer yourself, which needs Python 3.13 and [Inno Setup](https://jrsoftware.org/isinfo.php). All commands are for PowerShell, in the project folder.
+Needs Windows, [ffmpeg](https://ffmpeg.org) and [Deno](https://deno.com).
+
+1. Install ffmpeg (yt-dlp's own build, which patches some ffmpeg bugs that affect yt-dlp) and Deno, in PowerShell:
+   ```powershell
+   winget install --id yt-dlp.FFmpeg -e
+   winget install --id DenoLand.Deno -e
+   ```
+2. Download `Video Downloader Setup.exe` from the newest release (**Releases**, on the right of the project's GitHub page) and run it. Windows may say "Windows protected your PC", because Setup isn't signed: click **More info**, then **Run anyway**. Setup installs the app for your account only (no admin rights needed), adds it to the Start menu and starts it. The app has only one window: starting it again brings the open one to the front.
+3. Optional, the Chrome button: load the installed app's `extension` folder in Chrome. It isn't in the Chrome Web Store, so Chrome loads it only with **Developer mode** turned on. Step by step: [The Chrome button](docs/using.md#the-chrome-button).
+
+The installed app keeps yt-dlp up to date by itself (needed now and then when YouTube changes): it fetches a newer version in the background, and the window says when one is ready, with a button to restart the app and use it. To uninstall, use Settings > Apps; your history and sign-in file stay. More: [Installing and updating](docs/using.md#installing-and-updating).
+
+To build Setup yourself instead: [Building it yourself](#building-it-yourself).
+
+## Development
+
+### Building it yourself
+This needs Python 3.13 and [Inno Setup](https://jrsoftware.org/isinfo.php) too. All commands are for PowerShell, in the project folder.
 
 Get the project first: on its GitHub page, **Code > Download ZIP**, then extract it (or `git clone` it), and open its folder in PowerShell.
 
-1. Install ffmpeg (yt-dlp's own build, which patches some ffmpeg bugs that affect yt-dlp), Deno, Inno Setup and Python 3.13:
+1. Install ffmpeg, Deno, Inno Setup and Python 3.13:
    ```powershell
    winget install --id yt-dlp.FFmpeg -e
    winget install --id DenoLand.Deno -e
@@ -45,25 +62,22 @@ Get the project first: on its GitHub page, **Code > Download ZIP**, then extract
    ```powershell
    python installer/build.py
    ```
-4. Run `dist\Video Downloader Setup.exe`. It installs the app for your account only (no admin rights needed), adds it to the Start menu and starts it. The app has only one window: starting it again brings the open one to the front.
-5. Optional, the Chrome button: load the installed app's `extension` folder in Chrome. Step by step: [The Chrome button](docs/using.md#the-chrome-button).
+4. Run `dist\Video Downloader Setup.exe`, as in [Install and run](#install-and-run).
 
-The installed app keeps yt-dlp up to date by itself (needed now and then when YouTube changes): it fetches a newer version in the background, and the window says when one is ready, with a button to restart the app and use it. To uninstall, use Settings > Apps; your history and sign-in file stay. More: [Installing and updating](docs/using.md#installing-and-updating).
-
-## Development
+### Working on the app
 Run the app straight from the project, with the `.venv` active: `python -m video_downloader` (with a link after it, the link goes into the open window's box). The Chrome button then needs `python -m video_downloader.browser install`, which points Chrome at the project's helper instead of the installed one ([The Chrome button](docs/using.md#the-chrome-button)). Updating yt-dlp here: `python -m pip install -U "yt-dlp[default]"`. To check that yt-dlp finds ffmpeg and Deno, run `yt-dlp -v`: the `exe versions` line should list ffmpeg and the `JS runtimes` line deno; the closing "You must provide at least one URL" is expected.
 
 Checks, with the `.venv` active: `ruff check .` and `ruff format .` (lint and formatting), `pytest` (tests), `pyright` (type check).
 
 `pytest` needs ffmpeg for the download tests: they download a 1-second clip from a small web server they start on this PC (never the internet). Without ffmpeg they are skipped.
 
-The build: `python installer/build.py` updates yt-dlp, builds the app into `dist\Video Downloader\` (`Video Downloader.exe` there starts it without installing) and makes `dist\Video Downloader Setup.exe` from it. `--no-update` leaves yt-dlp as it is.
+The build: `python installer/build.py` updates yt-dlp, builds the app into `dist\Video Downloader\` (`Video Downloader.exe` there starts it without installing; `THIRD-PARTY-LICENSES.txt` there holds the licenses of everything it includes) and makes `dist\Video Downloader Setup.exe` from it. `--no-update` leaves yt-dlp as it is.
 
 GUI test: `pytest tests/gui/window_gui.py` (about 45 seconds) opens the real window, types a link, presses Enter and clicks Download, and checks what the window shows; a fake download stands in for yt-dlp. Screenshots: `python tests/gui/screenshots.py` (or one screen by name, e.g. `done`) saves them to the temp folder and prints the paths. Both open the window on top, on another screen if there is one, and don't take your keyboard; keys and clicks in their window are ignored. How they work: [docs/research/gui-testing.md](docs/research/gui-testing.md). The Chrome button's popup has its own test, `pytest tests/gui/popup_gui.py`, which needs Chrome and shows nothing on screen.
 
 ## Credits
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) by the yt-dlp contributors, Unlicense: does all the downloading.
-- The libraries yt-dlp installs with it, which the built app includes, each by its own authors: [requests](https://github.com/psf/requests) (Apache 2.0), [urllib3](https://github.com/urllib3/urllib3) (MIT), [certifi](https://github.com/certifi/python-certifi) (MPL 2.0), [mutagen](https://github.com/quodlibet/mutagen) (GPL 2.0 or later), [pycryptodomex](https://github.com/Legrandin/pycryptodome) (BSD and public domain), [brotli](https://github.com/google/brotli) (MIT), [websockets](https://github.com/python-websockets/websockets) (BSD 3-Clause), [idna](https://github.com/kjd/idna) (BSD 3-Clause) and [charset-normalizer](https://github.com/jawah/charset_normalizer) (MIT).
+- The libraries yt-dlp installs with it, and a few PyInstaller adds, which the built app includes, each by its own authors (their licenses in full: the app folder's `THIRD-PARTY-LICENSES.txt`): [requests](https://github.com/psf/requests) (Apache 2.0), [urllib3](https://github.com/urllib3/urllib3) (MIT), [certifi](https://github.com/certifi/python-certifi) (MPL 2.0), [pycryptodomex](https://github.com/Legrandin/pycryptodome) (BSD and public domain), [brotli](https://github.com/google/brotli) (MIT), [websockets](https://github.com/python-websockets/websockets) (BSD 3-Clause), [idna](https://github.com/kjd/idna) (BSD 3-Clause), [charset-normalizer](https://github.com/jawah/charset_normalizer) (MIT), [setuptools](https://github.com/pypa/setuptools) (MIT), [packaging](https://github.com/pypa/packaging) (Apache 2.0 or BSD 2-Clause) and [typing_extensions](https://github.com/python/typing_extensions) (PSF License).
 - [FFmpeg](https://ffmpeg.org) by the FFmpeg developers, LGPL 2.1+ or GPL 2+ depending on the build (the suggested [yt-dlp build](https://github.com/yt-dlp/FFmpeg-Builds) is GPL): joins video and audio, converts to MP3 and converts subtitles to SRT.
 - [yt-dlp-ejs](https://github.com/yt-dlp/ejs) by Simon Sawicki and the yt-dlp contributors, Unlicense with bundled MIT and ISC parts: installed with yt-dlp, solves YouTube's JavaScript challenges together with Deno.
 - [Deno](https://deno.com) by the Deno authors, MIT: the JavaScript runtime yt-dlp needs for YouTube.

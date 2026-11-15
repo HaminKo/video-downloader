@@ -18,5 +18,5 @@ The first version, for Windows (built and tested on Windows 11).
 - Plain-language messages when a download fails, such as no internet, a private or removed video, or YouTube's bot check.
 - Reddit videos, with a sign-in file exported from your browser ([Signing in](docs/signing-in.md)).
 - A Chrome button that downloads the video on the page you're on, as MP4 or MP3, and can cancel it again.
-- An installer for your account only, without admin rights. The installed app keeps yt-dlp up to date by itself and offers a restart when a new version is ready.
+- An installer for your account only, without admin rights, to download from the Releases page. The installed app keeps yt-dlp up to date by itself and offers a restart when a new version is ready.
 - One window: starting the app again brings the open window to the front.

@@ -2,6 +2,20 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-15: Setup.exe as a GitHub Release download; mutagen left out, the licenses shipped, the version 0.1.0 plus the build time
+- **Decision:** others get the app as `Video Downloader Setup.exe` from a GitHub Release (tag `vX.Y.Z`, notes from the changelog), published when the repo goes public. The README's "Install and run" is now ffmpeg and Deno with winget, then Setup from the newest release, with SmartScreen's warning (More info > Run anyway) and Chrome's Developer mode said; building it yourself moved under Development ("Building it yourself"). For the download: the build leaves out mutagen (`excludes` in the spec); build.py writes `LICENSE.txt` and `THIRD-PARTY-LICENSES.txt` (Python, Tcl/Tk and each library the app includes, in full) next to the .exe files, finding the libraries from the modules PyInstaller bundled (the spec writes `build/modules.txt`) and stopping on one without a license file; Settings > Apps shows "0.1.0 (2026.11.15 13:49)": pyproject.toml's version, passed in by build.py (`/DAppNumber`), then the build's date and time; Setup.exe's own file version is the number. A test checks that pyproject.toml's version is CHANGELOG.md's newest.
+- **Reason:** To do 21 keeps an installed app's yt-dlp current, so a download works for others over time. mutagen (GPL 2.0 or later) only embeds thumbnails, which the app never does: leaving it out keeps GPL code out of the download. MIT, BSD and Apache ask for their license text to go with copies, and yt-dlp's updates can add libraries, so the list comes from the build, not by hand. The number tells others which version they have; the time still tells this PC's builds apart (the reason for the date in the 2026-11-14 entry). Measurements: docs/research/installer.md, "Licenses and version".
+- **Who decided:** the user, taking Claude's suggestions (questions 1-4: a Release, yes; the licenses and mutagen; the version; publish with the go-public step). Built so by Claude: the license files' names, finding the libraries from PyInstaller's modules, and Setup.exe's file version.
+- **Rejected:**
+  - a code-signing certificate (no SmartScreen warning): a yearly cost for a hobby app
+  - a hand-written list of names and links instead of the license texts: cheaper, but not what MIT, BSD and Apache ask
+  - keeping mutagen and shipping its GPL text: the app doesn't need it, and GPL code in the download asks more of it (its source on offer) than the other licenses
+  - finding the libraries from pyproject.toml's requirements (tried): misses setuptools, packaging and typing_extensions, which PyInstaller adds
+  - reading PyInstaller's `PYZ-00.toc` after the build: its own work file, whose format can change; the spec's `Analysis.pure` and `binaries` are documented
+  - leaving out setuptools, packaging and typing_extensions too: what pulls them in wasn't found, so leaving them out could break the app; their licenses (MIT, Apache/BSD, PSF) ask only for the text
+  - the version number only, without the time: two builds of one version would look the same in Settings > Apps
+  - publishing the Release now: a Release in a private repo is visible only to its owner
+
 ## 2026-11-15: Semantic versioning from 0.1.0; CHANGELOG.md in Keep a Changelog format
 - **Decision:** CHANGELOG.md in the repo root follows Keep a Changelog 1.1.0: Unreleased first, then versions newest first, each headed `## [X.Y.Z] - YYYY-MM-DD`. The first version is 0.1.0, dated 2026-11-15, one "Added" list of what the app does; if the repo goes public on another day, that date changes to it. The number is the one pyproject.toml already had; a release changes both. Each change users can see gets one plain-language line under Unreleased (finish-step). The README's Status line links it.
 - **Reason:** the user's own choices for vlc-autofolder the day before (0.1.0, the day's date, no compare links), for the same "Before a public release" item. 0.x matches pyproject.toml. Dating it now means no extra step on release day if nothing changes before then.
