@@ -2,6 +2,15 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-15: Version 0.1.0 released, the Release before the repo went public; the notes start with an Install line
+- **Decision:** 0.1.0 was built and tagged on this PC, the user pushed and created the GitHub Release while the repo was still private, then made it public. Setup.exe is uploaded with the label `Video Downloader Setup.exe` (GitHub stores the file as `Video.Downloader.Setup.exe`). The Release notes are one Install line (ffmpeg and Deno before Setup, linking to the README) plus the changelog's section, with links pointing at the tag. Steps and measurements: docs/research/installer.md, "Releasing".
+- **Reason:** made public first, the README's "Releases" would point at an empty page for a while. Visitors land on the Release page, and without ffmpeg and Deno the app can't download, so the notes say so first. The label keeps the README's name for the file true on the page.
+- **Who decided:** the order and the Install line were Claude's suggestion; the user followed the order and kept the line.
+- **Rejected:**
+  - the notes exactly the changelog's section (the earlier plan): says nothing about ffmpeg and Deno
+  - relative links in the notes: GitHub would resolve them against the Release page's address, and they would break
+  - a Setup.exe name without spaces: changes setup.iss, the tests and the docs, only for the downloaded file's name
+
 ## 2026-11-15: The repo goes public with its history; the commit e-mail stays in it
 - **Decision:** the pre-release privacy scan found nothing from CLAUDE.md's "Never in tracked files" list in the tracked files, in any of the 48 commits, or in the built app (docs/todo.md, the scan's item), so the repo goes public as it is, with no new repo. Every commit carries the repo's commit identity, including its e-mail address (docs/local.md). It stays there, and new commits keep using it.
 - **Reason:** only someone who clones the repo or opens a commit's patch sees the e-mail, the same "digging through history" the user already accepts for the login in old commits. The cost is some spam from bots that collect addresses from public repos.

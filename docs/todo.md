@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: Before a public release (no to-dos open)
+- Now: nothing open (0.1.0 released, repo public)
 - Next: nothing under Bugs me
 - Updated: 2026-11-15
 
@@ -11,7 +11,7 @@ Next number: 23. Numbers are permanent: never renumber or reuse one; to move a t
 ### Now
 The one to-do being built.
 
-- Nothing here now: the "Before a public release" list below comes next (To do 21 finished 2026-11-15).
+- Nothing here now (version 0.1.0 released and the repo public 2026-11-15, the "Before a public release" list below done).
 
 ### Bugs me
 At most 5, in order: the next ones to build. When Now is finished, the first one here moves up.
@@ -36,7 +36,7 @@ Starts once To do 21 is finished (the user, 2026-11-14: a Setup.exe that other p
 - ~~Start CHANGELOG.md (Keep a Changelog: Unreleased first, then versions newest first) with the first version.~~ Done 2026-11-15: version 0.1.0 (decisions.md).
 - ~~Setup.exe as a download on a GitHub Release: ask the user first (suggested: yes, now that To do 21 keeps yt-dlp current). A downloaded, unsigned Setup.exe gets SmartScreen's warning (docs/research/installer.md, "Signing"), and the Chrome button is an unpacked extension, which others load in Chrome's developer mode; the README says both.~~ Done 2026-11-15: yes; the README installs from the Release, the app ships its licenses without mutagen, Setup's version is 0.1.0 plus the build time (decisions.md). The Release itself goes up with the go-public step below.
 - ~~Last, so it sees every file written above: search all tracked files for the "Never in tracked files" list in CLAUDE.md. If old commits hold any of it (except the GitHub login, which old commits may hold), publish a new repo with one clean commit instead of rewriting history.~~ Done 2026-11-15: nothing found, so no new repo. Searched (measured): the 78 tracked files and all 48 commits (contents and messages) for the user folder, the login, e-mail addresses and drive paths (only made-up test paths such as `C:\Fresh`); no video or audio was ever committed; the PNGs show nothing personal and hold no metadata. Also the built app, which the Release makes public (docs/research/installer.md, "No build PC paths in the build"). The commit e-mail, which every commit carries, stays (decisions.md).
-- Then the user switches the repo to public, and version 0.1.0 is released: CHANGELOG.md's date set to that day, `python installer/build.py` (with the yt-dlp update), a tag `v0.1.0` and a GitHub Release "0.1.0" with `Video Downloader Setup.exe` and the changelog's 0.1.0 section as its notes. Then check the README's install steps with the downloaded Setup.exe (SmartScreen's warning).
+- ~~Then the user switches the repo to public, and version 0.1.0 is released: CHANGELOG.md's date set to that day, `python installer/build.py` (with the yt-dlp update), a tag `v0.1.0` and a GitHub Release "0.1.0" with `Video Downloader Setup.exe` and the changelog's 0.1.0 section as its notes. Then check the README's install steps with the downloaded Setup.exe (SmartScreen's warning).~~ Done 2026-11-15: the Release first, then public; the notes start with an Install line; the user installed the downloaded Setup by the README (decisions.md; docs/research/installer.md, "Releasing").
 
 ## Writing a to-do
 - **Number:** the "Next number" (then raise that line by one). The line goes under Someday, unless the user says it bugs them or wants it soon: then under Bugs me where the user says (at most 5 there, so ask which one drops back to Someday), and "Next:" and "Updated:" in "Where we are" change with it.
