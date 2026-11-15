@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: To do 21, step B (the updater)
+- Now: To do 21, step C (the visible part)
 - Next: Before a public release (nothing under Bugs me)
 - Updated: 2026-11-14
 

@@ -30,4 +30,5 @@ def test_from_the_project() -> None:
 def test_in_the_built_app(built_app: Path) -> None:
     assert places.built()
     assert places.extension_folder() == built_app / "extension"
+    assert places.ytdlp_folder() == built_app / "yt-dlp"
     assert places.app_command() == [str(built_app / "Video Downloader.exe")]

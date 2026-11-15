@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from video_downloader import handoff
+from video_downloader import handoff, ytdlp_update
 from video_downloader.app import (
     APP_ID,
     ASK_ABOVE,
@@ -1247,6 +1247,14 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, object]]]
             listening.close()
 
 
+@pytest.fixture
+def update_check(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
+    """Set once the yt-dlp update check main() starts in a thread has run."""
+    checked = threading.Event()
+    monkeypatch.setattr(ytdlp_update, "check", checked.set)
+    return checked
+
+
 def took_the_pipe(options: dict[str, object]) -> bool:
     """The window main() opened took handoff.PIPE (the test's own,
     conftest.py), so it gets what is sent there."""
@@ -1269,7 +1277,7 @@ def open_window_on(pipe: str) -> Iterator[queue.Queue[Message]]:
 
 
 def test_main_hands_everything_to_the_open_window(
-    opened: list[dict[str, object]],
+    opened: list[dict[str, object]], update_check: threading.Event
 ) -> None:
     with open_window_on(handoff.PIPE) as received:
         main([f" {LINK} "])
@@ -1284,6 +1292,7 @@ def test_main_hands_everything_to_the_open_window(
         handoff.SHOW,
     ]
     assert opened == [], "no second window"
+    assert not update_check.is_set(), "only the window that opens checks"
 
 
 @pytest.mark.parametrize(
@@ -1292,13 +1301,17 @@ def test_main_hands_everything_to_the_open_window(
     ids=["link", "download"],
 )
 def test_main_opens_a_window_with_the_link_when_none_is_open(
-    arguments: list[str], choices: Choices | None, opened: list[dict[str, object]]
+    arguments: list[str],
+    choices: Choices | None,
+    opened: list[dict[str, object]],
+    update_check: threading.Event,
 ) -> None:
     main(arguments)
     [options] = opened
     assert took_the_pipe(options)
     assert (options["link"], options["choices"]) == (LINK, choices)
     assert options["held"] == [APP_ID], "Setup's mutex, before the window opens"
+    assert update_check.wait(5), "the yt-dlp update check started"
 
 
 def test_main_without_a_link_opens_an_empty_window(

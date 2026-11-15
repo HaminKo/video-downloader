@@ -3,9 +3,10 @@ with the .venv active:
 
     python installer/build.py
 
-It updates yt-dlp first (YouTube changes often, and the built app can't
-update it by itself; --no-update skips this), makes the icon from the
-window's PNGs, runs PyInstaller (installer/video-downloader.spec), adds the
+It updates yt-dlp first (YouTube changes often; the built app then fetches
+newer releases by itself, ytdlp_update.py; --no-update skips this), makes
+the icon from the window's PNGs, runs PyInstaller
+(installer/video-downloader.spec), adds the
 Chrome extension's folder and the helper's manifest (host.json) next to the
 .exe files, and makes the installer with Inno Setup (installer/setup.iss).
 The app ends up in dist/Video Downloader/, its installer in

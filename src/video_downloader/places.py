@@ -36,6 +36,13 @@ def extension_folder() -> Path:
     return Path(__file__).resolve().parents[2] / "extension"
 
 
+def ytdlp_folder() -> Path:
+    """The built app's folder for the newer yt-dlp copies it downloads
+    (ytdlp_update.py), next to the .exe files: part of the app's own folder,
+    not DATA_FOLDER, which uninstalling keeps. Used only in the built app."""
+    return Path(sys.executable).parent / "yt-dlp"
+
+
 def app_command() -> list[str]:
     """The command that starts the window, without a console: the built
     app's .exe (next to this one), or the project's pythonw.exe (next to the

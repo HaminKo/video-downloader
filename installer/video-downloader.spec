@@ -10,12 +10,16 @@
 # JavaScript files YouTube needs (docs/research/installer.md).
 from pathlib import Path
 
+from PyInstaller.utils.hooks import copy_metadata
+
 from video_downloader.places import APP_EXE, APP_NAME, HELPER_EXE
 
 HERE = Path(SPECPATH)
 ICON = str(HERE.parent / "build" / "icon.ico")  # made by build.py
 
-app = Analysis([str(HERE / "start_app.py")])
+# yt-dlp's dist-info, so the app can tell the bundled yt-dlp's version
+# without importing it (ytdlp_update.bundled_version()).
+app = Analysis([str(HERE / "start_app.py")], datas=copy_metadata("yt-dlp"))
 helper = Analysis([str(HERE / "start_helper.py")])
 
 # upx=False: packed .exe files trip antivirus programs more often.

@@ -33,7 +33,7 @@ from enum import StrEnum
 from pathlib import Path
 from tkinter import font, messagebox, ttk
 
-from video_downloader import downloader, handoff, places
+from video_downloader import downloader, handoff, places, ytdlp_update
 from video_downloader.browser import EXTENSION_FOLDER
 from video_downloader.downloader import (
     Cancelled,
@@ -1051,7 +1051,11 @@ def main(arguments: list[str] | None = None) -> None:
     # (installer/setup.iss, AppMutex). Here, not in start(): only a window
     # that opens holds it, not the GUI test's or the screenshots'.
     hold_mutex(APP_ID)
-    start(listening=listening, link=link, choices=choices).root.mainloop()
+    app = start(listening=listening, link=link, choices=choices)
+    # Once the window is built, the built app looks for a newer yt-dlp, for
+    # its next start (from the project it doesn't).
+    threading.Thread(target=ytdlp_update.check, daemon=True).start()
+    app.root.mainloop()
 
 
 def hold_mutex(name: str) -> int | None:
