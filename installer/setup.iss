@@ -41,8 +41,13 @@ OutputDir=..\dist
 OutputBaseFilename={#AppName} Setup
 Compression=lzma2
 SolidCompression=yes
-; Inno's default, said out loud: a window still open from the old install
-; is offered to be closed before its files are replaced.
+; The open window holds a mutex of this name (app.main()): when Setup or
+; the uninstaller starts, it asks to close the window first (OK or Cancel),
+; or a running .exe would block replacing or deleting its files.
+AppMutex={#TaskbarId}
+; Inno's default, said out loud: anything else still using the files (the
+; Chrome helper, a window opened after Setup started) is offered to be
+; closed before they are replaced.
 CloseApplications=yes
 
 [Languages]

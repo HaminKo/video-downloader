@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: Nothing open (To do 11 finished; a to-do moves up when it starts to bug the user)
+- Now: Nothing open (To do 20 finished; a to-do moves up when it starts to bug the user)
 - Next: Nothing under Bugs me
 - Updated: 2026-11-14
 
@@ -21,7 +21,7 @@ At most 5, in order: the next ones to build. When Now is finished, the first one
 ### Someday
 Everything else, unordered (grouped by area once it grows). A Someday to-do moves up only when it starts to bug the user.
 
-- To do 20: Setup and the uninstaller ask to close an open window first (small; Claude 2026-11-14): docs/todo/20-close-before-setup.md
+- Nothing here now.
 
 ## Later, only if the user asks
 - Nothing here now (all moved into the list above on 2026-11-11).

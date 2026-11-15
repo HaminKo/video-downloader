@@ -56,7 +56,8 @@ ICONS = EXTENSION_FOLDER / "icons"
 ICON_SIZES = (16, 32, 48, 128)
 
 # The app's own ID for Windows' taskbar: without it, the window joins
-# Python's taskbar button and shows Python's icon (measured).
+# Python's taskbar button and shows Python's icon (measured). Also the name
+# of the mutex the open window holds for Setup (main()).
 APP_ID = "VideoDownloader.App"
 PASTE_A_LINK = "Paste a link to a video first."
 LOOKING_UP = "Looking up the video..."
@@ -1046,7 +1047,26 @@ def main(arguments: list[str] | None = None) -> None:
         # That window was closing: take its pipe, unless it is stuck.
         with contextlib.suppress(PermissionError):
             listening = handoff.listen(handoff.PIPE)
+    # Setup and the uninstaller ask to close the window while this exists
+    # (installer/setup.iss, AppMutex). Here, not in start(): only a window
+    # that opens holds it, not the GUI test's or the screenshots'.
+    hold_mutex(APP_ID)
     start(listening=listening, link=link, choices=choices).root.mainloop()
+
+
+def hold_mutex(name: str) -> int | None:
+    """Create a mutex called `name`, held until this process ends (Windows
+    closes it then; Inno Setup's help advises not closing it sooner). Its
+    handle, or None when it can't be made."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32")  # its own copy, for these types
+    kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    return kernel32.CreateMutexW(None, False, name)
 
 
 def hand_over(link: str, choices: handoff.Choices | None) -> bool:

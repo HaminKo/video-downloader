@@ -1,3 +1,4 @@
+import ctypes
 import json
 import os
 import queue
@@ -7,6 +8,7 @@ import time
 import tkinter as tk
 from collections.abc import Iterator
 from contextlib import contextmanager
+from ctypes import wintypes
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +16,7 @@ import pytest
 
 from video_downloader import handoff
 from video_downloader.app import (
+    APP_ID,
     ASK_ABOVE,
     CANCELLED,
     CANCELLING,
@@ -35,6 +38,7 @@ from video_downloader.app import (
     Job,
     State,
     done_message,
+    hold_mutex,
     load_history,
     main,
     save_history,
@@ -60,6 +64,7 @@ from video_downloader.handoff import Answer, Choices, Message
 LINK = "https://example.com/video"
 LINK2 = "https://example.com/second"
 LINK3 = "https://example.com/third"
+SYNCHRONIZE = 0x00100000  # Windows' least access right to open a mutex with
 
 
 class FakeDownload:
@@ -1166,6 +1171,41 @@ def test_start_puts_a_link_in_the_box(
         window.root.destroy()
 
 
+# Windows' kernel32, a copy of its own so these types don't change
+# ctypes.windll.kernel32 for other code. Handles are pointer-sized.
+kernel32 = ctypes.WinDLL("kernel32")
+kernel32.OpenMutexW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+kernel32.OpenMutexW.restype = wintypes.HANDLE
+kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+
+def mutex_exists(name: str) -> bool:
+    """Whether a mutex called `name` exists, found by name as Setup does
+    (in this session's names, which other programs share; the installer's
+    round trip checks it from Setup: docs/research/installer.md). In this
+    process, not another: starting Python here can make the next test's
+    timing slip (measured, To do 20)."""
+    handle = kernel32.OpenMutexW(SYNCHRONIZE, False, name)
+    if handle:
+        kernel32.CloseHandle(handle)
+    return bool(handle)
+
+
+def test_hold_mutex_makes_one_setup_finds() -> None:
+    """Setup and the uninstaller ask to close the window while the mutex
+    main() holds exists (installer/setup.iss, AppMutex). A name of the
+    test's own, so an open Video Downloader doesn't count."""
+    name = f"VideoDownloader.Test.{os.getpid()}"
+    assert not mutex_exists(name)
+    handle = hold_mutex(name)
+    assert handle, "not made"
+    try:
+        assert mutex_exists(name)
+    finally:
+        kernel32.CloseHandle(handle)
+    assert not mutex_exists(name), "gone once its only handle is closed"
+
+
 def test_start_with_choices_downloads_in_a_minimized_window(
     fake: FakeDownload, files: FakeFiles, tmp_path: Path, to_front: list[tk.Tk]
 ) -> None:
@@ -1173,9 +1213,11 @@ def test_start_with_choices_downloads_in_a_minimized_window(
         fake, tmp_path, files, tmp_path / "history.json", None, LINK, Choices("mp3")
     )
     try:
+        # Before update(): it may run the 100 ms check (CHECK_EVERY) that
+        # shows the fake's at-once end (measured: 1 run in 12 failed).
+        assert rows(window) == [(LINK, "MP3", "Downloading")]
         window.root.update()
         assert window.root.state() == "iconic"
-        assert rows(window) == [(LINK, "MP3", "Downloading")]
         assert window.link.get() == "", "not in the box"
         assert to_front == []
         wait_until_done(window)
@@ -1186,16 +1228,19 @@ def test_start_with_choices_downloads_in_a_minimized_window(
 
 @pytest.fixture
 def opened(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, object]]]:
-    """Record the windows main() opens instead of opening them. The pipe each
-    one took stays taken until the test ends, as by a window still being
-    built (it reads only once it is built)."""
+    """Record the windows main() opens instead of opening them, each with the
+    mutexes held by then ("held"; not made, or this test run would hold the
+    app's). The pipe each one took stays taken until the test ends, as by a
+    window still being built (it reads only once it is built)."""
     calls: list[dict[str, object]] = []
+    held: list[str] = []
 
     def fake_start(**options: object) -> SimpleNamespace:
-        calls.append(options)
+        calls.append(options | {"held": held.copy()})
         return SimpleNamespace(root=SimpleNamespace(mainloop=lambda: None))
 
     monkeypatch.setattr("video_downloader.app.start", fake_start)
+    monkeypatch.setattr("video_downloader.app.hold_mutex", held.append)
     yield calls
     for options in calls:
         if isinstance(listening := options["listening"], handoff.Listening):
@@ -1253,6 +1298,7 @@ def test_main_opens_a_window_with_the_link_when_none_is_open(
     [options] = opened
     assert took_the_pipe(options)
     assert (options["link"], options["choices"]) == (LINK, choices)
+    assert options["held"] == [APP_ID], "Setup's mutex, before the window opens"
 
 
 def test_main_without_a_link_opens_an_empty_window(
@@ -1285,6 +1331,7 @@ def test_two_windows_started_at_once_end_in_one(
         "listening": options["listening"],
         "link": LINK,
         "choices": Choices("mp4"),
+        "held": [APP_ID],
     }
     listening = options["listening"]
     assert took_the_pipe(options) and isinstance(listening, handoff.Listening)
@@ -1334,7 +1381,9 @@ def test_main_opens_a_window_when_the_pipe_cant_be_made(
     too_long = r"\\.\pipe" + "\\" + "x" * 300  # Windows allows 256 characters
     monkeypatch.setattr(handoff, "PIPE", too_long)
     main([LINK])
-    assert opened == [{"listening": None, "link": LINK, "choices": None}]
+    assert opened == [
+        {"listening": None, "link": LINK, "choices": None, "held": [APP_ID]}
+    ]
 
 
 @pytest.mark.parametrize(

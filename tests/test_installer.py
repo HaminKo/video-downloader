@@ -40,6 +40,7 @@ def test_setup_uses_the_apps_names() -> None:
         "HostManifest": browser.MANIFEST,
     }
     assert "OutputBaseFilename={#AppName} Setup\n" in text
+    assert "AppMutex={#TaskbarId}\n" in text  # the window's (app.start())
     assert load_build().SETUP.name == f"{places.APP_NAME} Setup.exe"
 
 
