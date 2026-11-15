@@ -4,6 +4,8 @@ A small Windows app: paste a link to a video and it saves the video to your PC a
 
 It does not download from DRM-protected services (Netflix, Disney+, Spotify and the like).
 
+![The Video Downloader window: a link box, MP4 or MP3 with quality and subtitles, and a list of past downloads with one in progress](docs/images/window.png)
+
 ## Status
 Downloading works, and when a download fails the window says why in plain words. Reddit works once you've signed in ([Signing in](docs/signing-in.md)). What comes next is in [docs/todo.md](docs/todo.md).
 

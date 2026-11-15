@@ -2,6 +2,16 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-15: The README's picture is the "history" screenshot, docs/images/window.png
+- **Decision:** the README shows one picture of the window, right under its first lines: the "history" screen of `python tests/gui/screenshots.py`, copied by hand to docs/images/window.png. When the window's look changes, it is taken and copied again (CLAUDE.md "Docs to update"). Second item of "Before a public release" (docs/todo.md).
+- **Reason:** of the window's screens, "history" shows the most at once: MP4 and MP3, the three qualities, subtitles, past downloads and one in progress. Its titles are made up by the test, and no screen shows a personal path (the status line says "Downloads\Videos", checked). 903 × 571 px, 19 KB.
+- **Who decided:** Claude, on the to-do list's own suggestion (screenshots.py); the user can pick another screen.
+- **Rejected:**
+  - "queue": its waiting row shows a bare link, which looks unfinished
+  - "done": a single row, so the list looks empty
+  - a screenshots.py option that writes straight into docs/images: code for a copy made a few times a year
+  - the Chrome popup as a second picture: the README's rule asks for a picture, not a gallery; docs/using.md could show it later
+
 ## 2026-11-15: MIT license, "Copyright (c) 2026 the video-downloader authors"
 - **Decision:** the repo is under the MIT license: LICENSE in the root, a License line at the end of the README. The copyright line names "the video-downloader authors", not a person. No license header in each source file. First item of "Before a public release" (docs/todo.md).
 - **Reason:** MIT was the user's choice (the "goes public" entry below). The group name keeps the GitHub login out of tracked files (CLAUDE.md "Never in tracked files"); git history still records the author. The same wording as the user's other public projects.

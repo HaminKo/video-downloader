@@ -30,7 +30,7 @@ Everything else, unordered (grouped by area once it grows). A Someday to-do move
 ## Before a public release
 Starts once To do 21 is finished (the user, 2026-11-14: a Setup.exe that other people install must keep yt-dlp current). In this order:
 - ~~A license: add a LICENSE file, MIT (the user, 2026-11-14).~~ Done 2026-11-15: "the video-downloader authors", and a License line in the README (decisions.md).
-- A screenshot of the window in the README (`python tests/gui/screenshots.py`).
+- ~~A screenshot of the window in the README (`python tests/gui/screenshots.py`).~~ Done 2026-11-15: the "history" screen as docs/images/window.png, under the README's first lines (decisions.md).
 - The README follows the "README" rule in ~/.claude/CLAUDE.md, checked with `/trim-readme` (it measures first and stops if the README already fits).
 - A fresh subagent that hasn't seen the project checks README.md and the docs it links against the code, and only reports; the user decides the fixes.
 - Start CHANGELOG.md (Keep a Changelog: Unreleased first, then versions newest first) with the first version.
