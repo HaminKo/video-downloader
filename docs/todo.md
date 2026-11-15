@@ -1,12 +1,12 @@
 # To do
 
 ## Where we are
-- Now: To do 21 (yt-dlp updates itself)
+- Now: To do 21, step B (the updater)
 - Next: Before a public release (nothing under Bugs me)
 - Updated: 2026-11-14
 
 ## To do
-Next number: 22. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
+Next number: 23. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
 
 ### Now
 The one to-do being built.
@@ -21,7 +21,7 @@ At most 5, in order: the next ones to build. When Now is finished, the first one
 ### Someday
 Everything else, unordered (grouped by area once it grows). A Someday to-do moves up only when it starts to bug the user.
 
-- Nothing here now.
+- To do 22: the yt-dlp updater follows yt-dlp's `_update_spec` (small; user 2026-11-14): docs/todo/22-ytdlp-update-spec.md
 
 ## Later, only if the user asks
 - Nothing here now (all moved into the list above on 2026-11-11).

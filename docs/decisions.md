@@ -2,6 +2,22 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-14: The built app updates yt-dlp itself: at start, at most once a day, in the background, used from the next start
+- **Decision:** only the built app (`places.built()`) looks for a new stable yt-dlp, at each start and at most once a day, in a background thread. A new copy comes from yt-dlp's GitHub releases over HTTPS, is checked against the release's `SHA2-256SUMS`, and is used from the next start. A copy that is incomplete or fails to import is never used (the bundled yt-dlp is), and a version that failed to import isn't downloaded again. The copies live in a `yt-dlp` folder inside the installed app's folder, which the uninstaller removes (setup.iss). The updater deletes only inside that folder: folders named like a version, or its own unfinished download, never the copy in use or the newest one. The window shows one line when a new copy is ready ("yt-dlp was updated to VERSION. Close and reopen the app to use it."), nothing otherwise. From the project nothing changes (`pip install -U`). What is downloaded is the release's zipapp `yt-dlp`, unpacked and compiled once (step A, docs/research/yt-dlp-update.md). To do 21.
+- **Reason:** a Setup.exe other people install must keep working when YouTube changes (the "goes public" entry below), and yt-dlp's own updater refuses the built app (docs/research/yt-dlp-update.md). In the background the start is no slower; from the next start, since swapping a loaded yt-dlp is fragile. The checksum catches a broken or cut-off download; trusting yt-dlp's GitHub is the same trust yt-dlp's own `-U` has.
+- **Who decided:** the user, on Claude's suggestions (To do 21's questions 1-8, and step A's storage question, 2026-11-14).
+- **Rejected:**
+  - the zipapp kept as one file (3 MB, simpler): the built app writes no `.pyc`, so every start took about 1.3 s longer (measured with a throwaway build); unpacked and compiled, a copy starts as fast as the bundled yt-dlp and takes 25 MB
+  - the wheel: on PyPI only, not in yt-dlp's GitHub releases
+  - bundling Python's whole standard library: none of 10 releases over 3 years imported a module the build lacks
+  - reading `_update_spec` now: it matters only once yt-dlp drops Python 3.13 (likely around 2029); To do 22 (Someday)
+  - the copies in `%APPDATA%\video-downloader` (the to-do's suggestion): the uninstaller keeps that folder on purpose (history, sign-in file), so old code would stay behind
+  - checking `SHA2-256SUMS.sig` (GPG): a PGP library in the app, against a hacked yt-dlp account, which yt-dlp's own updater doesn't guard against either
+  - nightly releases: fixes come sooner, but they break more often
+  - using a new copy at once: swapping a loaded yt-dlp in a running app is fragile
+  - a line for no update, no internet or a failed check: noise about something the user can't act on
+  - updating from the project too: `pip install -U` already does it
+
 ## 2026-11-14: The project goes public, after the app learns to update yt-dlp itself (To do 21)
 - **Decision:** the repo goes public once To do 21 (yt-dlp updates itself) and the "Before a public release" list in docs/todo.md are done; the license is MIT. Setup.exe as a GitHub Release download is on that list, asked again then.
 - **Reason:** the user wants the project public, like their other projects. Today only a new build updates yt-dlp, so a Setup.exe other people install would stop working for YouTube after its next change. The project's setup (2026-11-10) had no "Before a public release" list: its public-or-private answer wasn't written down, likely "private" (the Goal says "for one person").
