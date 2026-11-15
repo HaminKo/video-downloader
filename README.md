@@ -66,3 +66,6 @@ GUI test: `pytest tests/gui/window_gui.py` opens the real window for about 5 sec
 - [PyInstaller](https://pyinstaller.org) by the PyInstaller Development Team, GPL 2.0 with an exception for the programs it builds: builds the app's .exe files.
 - [Inno Setup](https://jrsoftware.org/isinfo.php) by Jordan Russell and Martijn Laan, Inno Setup License (free, also for commercial use): makes the installer.
 - Development tools: [ruff](https://github.com/astral-sh/ruff) by Astral (MIT), [pyright](https://github.com/microsoft/pyright) by Microsoft (MIT), [pytest](https://pytest.org) by the pytest-dev team (MIT), [Pillow](https://python-pillow.github.io) by Jeffrey A. Clark and contributors (MIT-CMU, screenshots for the GUI test; drew the Chrome button's icons and makes the .exe files' icon), [hatchling](https://github.com/pypa/hatch) by the Python Packaging Authority (MIT, builds the package for the install).
+
+## License
+MIT: see [LICENSE](LICENSE).

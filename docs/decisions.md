@@ -2,6 +2,14 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-15: MIT license, "Copyright (c) 2026 the video-downloader authors"
+- **Decision:** the repo is under the MIT license: LICENSE in the root, a License line at the end of the README. The copyright line names "the video-downloader authors", not a person. No license header in each source file. First item of "Before a public release" (docs/todo.md).
+- **Reason:** MIT was the user's choice (the "goes public" entry below). The group name keeps the GitHub login out of tracked files (CLAUDE.md "Never in tracked files"); git history still records the author. The same wording as the user's other public projects.
+- **Who decided:** Claude, following the user's choice of MIT and the wording of their other projects; the user can change the name before the repo goes public.
+- **Rejected:**
+  - the user's real name or GitHub login in the copyright line: the login must stay out of tracked files, and the real name isn't needed
+  - a license header in each source file: MIT doesn't need one, and the root LICENSE is what GitHub shows
+
 ## 2026-11-14: The built app updates yt-dlp itself: at start, at most once a day, in the background, used from the next start
 - **Decision:** only the built app (`places.built()`) looks for a new stable yt-dlp, at each start and at most once a day, in a background thread. A new copy comes from yt-dlp's GitHub releases over HTTPS, is checked against the release's `SHA2-256SUMS`, and is used from the next start. A copy that is incomplete or fails to import is never used (the bundled yt-dlp is), and a version that failed to import isn't downloaded again. The copies live in a `yt-dlp` folder inside the installed app's folder, which the uninstaller removes (setup.iss). The updater deletes only inside that folder: folders named like a version, or its own unfinished download, never the copy in use or the newest one. The window shows one line when a new copy is ready ("yt-dlp was updated to VERSION. Restart the app to use it.", with a **Restart now** button since step D; before it: "Close and reopen the app to use it."), nothing otherwise. From the project nothing changes (`pip install -U`). What is downloaded is the release's zipapp `yt-dlp`, unpacked and compiled once (step A, docs/research/yt-dlp-update.md). To do 21.
 - **Reason:** a Setup.exe other people install must keep working when YouTube changes (the "goes public" entry below), and yt-dlp's own updater refuses the built app (docs/research/yt-dlp-update.md). In the background the start is no slower; from the next start, since swapping a loaded yt-dlp is fragile. The checksum catches a broken or cut-off download; trusting yt-dlp's GitHub is the same trust yt-dlp's own `-U` has.
