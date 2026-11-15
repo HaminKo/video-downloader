@@ -241,7 +241,10 @@ def test_the_window_opened_gets_the_link_and_choices(
 
     def fake_start(**options: object) -> SimpleNamespace:
         opened.append(options)
-        return SimpleNamespace(root=SimpleNamespace(mainloop=lambda: None))
+        return SimpleNamespace(
+            root=SimpleNamespace(mainloop=lambda: None),
+            look_for_update=lambda check: None,  # never the real check
+        )
 
     monkeypatch.setattr(app, "start", fake_start)
     app.main(host.window_arguments(LINK, start))

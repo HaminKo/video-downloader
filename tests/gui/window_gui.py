@@ -49,6 +49,7 @@ from video_downloader.app import (
     LINK_RECEIVED,
     PASTE_A_LINK,
     TITLE,
+    UPDATED,
     WAITING,
     App,
     load_history,
@@ -492,6 +493,28 @@ def test_long_message_wraps_instead_of_widening(app: App) -> None:
     assert app.root.winfo_width() == width, "a long message widened the window"
     assert_inside_window(app.status_label)
     assert_inside_window(app.show_button)
+
+
+def test_a_newer_ytdlp_gets_a_line_under_the_buttons(app: App) -> None:
+    height = app.root.winfo_height()
+    app.look_for_update(lambda: "2099.1.1")  # as ytdlp_update.check() after a download
+    wait_until(app, app.update_label.winfo_ismapped, "the update line")
+    app.root.update()
+    assert app.update_label.cget("text") == UPDATED.format(version="2099.1.1")
+    assert_inside_window(app.update_label)
+    assert box(app.update_label)[1] >= box(app.play_button)[3], (
+        "the update line should be under the buttons"
+    )
+    assert app.root.winfo_height() > height, "the window didn't grow for the line"
+
+
+def test_no_newer_ytdlp_gets_no_line(app: App) -> None:
+    height = app.root.winfo_height()
+    app.look_for_update(lambda: None)  # nothing new, no internet, from the project
+    wait_until(app, lambda: not app.next_update_check, "the check to end")
+    app.root.update()
+    assert app.update_label.winfo_manager() == "", "the update line was placed"
+    assert app.root.winfo_height() == height
 
 
 def test_the_topmost_other_screen_is_picked() -> None:

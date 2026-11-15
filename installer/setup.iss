@@ -63,6 +63,13 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Type: filesandordirs; Name: "{app}\_internal"
 Type: filesandordirs; Name: "{app}\extension"
 
+[UninstallDelete]
+; The newer yt-dlp copies the app downloads for itself, with the updater's
+; notes (src/video_downloader/ytdlp_update.py): the app makes this folder,
+; not Setup, so without this line the uninstaller would leave it. Setup
+; over an install keeps it: the app deletes the copies it won't use.
+Type: filesandordirs; Name: "{app}\yt-dlp"
+
 [Files]
 Source: "..\dist\{#AppName}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

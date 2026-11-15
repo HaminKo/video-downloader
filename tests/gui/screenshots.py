@@ -109,6 +109,13 @@ def received(app: App, fake: FakeDownload) -> None:
     app.root.update()
 
 
+def updated(app: App, fake: FakeDownload) -> None:
+    """The built app has downloaded a newer yt-dlp: a line under the buttons
+    says to reopen the app."""
+    app.look_for_update(lambda: "2026.11.20")
+    wait_until(app, app.update_label.winfo_ismapped, "the update line")
+
+
 SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "start": opened,
     "progress": downloading,
@@ -119,6 +126,7 @@ SCREENS: dict[str, Callable[[App, FakeDownload], None]] = {
     "playlist": playlist,
     "history": with_history,
     "received": received,
+    "updated": updated,
 }
 
 # The screens whose window opens with past downloads; the others with none.

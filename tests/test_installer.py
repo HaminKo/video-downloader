@@ -41,6 +41,9 @@ def test_setup_uses_the_apps_names() -> None:
     }
     assert "OutputBaseFilename={#AppName} Setup\n" in text
     assert "AppMutex={#TaskbarId}\n" in text  # the window's (app.start())
+    # The uninstaller deletes the folder of downloaded yt-dlp copies.
+    folder = places.ytdlp_folder().name
+    assert f'Type: filesandordirs; Name: "{{app}}\\{folder}"\n' in text
     assert load_build().SETUP.name == f"{places.APP_NAME} Setup.exe"
 
 

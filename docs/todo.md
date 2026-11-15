@@ -1,9 +1,9 @@
 # To do
 
 ## Where we are
-- Now: To do 21, step C (the visible part)
+- Now: To do 21, step D (a Restart now button)
 - Next: Before a public release (nothing under Bugs me)
-- Updated: 2026-11-14
+- Updated: 2026-11-15
 
 ## To do
 Next number: 23. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.

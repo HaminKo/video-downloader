@@ -1,6 +1,7 @@
 """The main window: a link box, Download and Cancel buttons, MP4 or MP3, the
 video quality, English subtitles, the list of downloads, progress, a status
-line, and Play, Show in folder and Remove buttons.
+line, and Play, Show in folder and Remove buttons. Under them, once the
+built app has downloaded a newer yt-dlp for its next start, a line says so.
 
 Links wait in the list and download one after another. The bar, the status
 line and the buttons under them are about the selected row. The list starts
@@ -71,6 +72,9 @@ NO_SUBTITLES = "No English subtitles found."
 SOME_WITHOUT_SUBTITLES = "No English subtitles for {count} of the videos."
 GONE = "Can't play {name}: it isn't in {folder} anymore."
 LINK_RECEIVED = "Link received: choose MP4 or MP3, then Download."
+# Under everything else, once the built app has downloaded a newer yt-dlp
+# (look_for_update()).
+UPDATED = "yt-dlp was updated to {version}. Close and reopen the app to use it."
 
 # A playlist with more videos than this is downloaded only after a Yes in a
 # box (ask_yes_no()): a channel can have thousands.
@@ -252,6 +256,7 @@ class App:
         # Cancels sent from outside: the link, and where its answer goes.
         self.cancels: queue.Queue[tuple[str, Future[handoff.Answer]]] = queue.Queue()
         self.next_link_check = ""  # the scheduled check_links()
+        self.next_update_check = ""  # the scheduled show_update()
         self.listening = listening
         self.ask = ask
         # Questions from the running download (confirm_playlist()): the box's
@@ -375,7 +380,7 @@ class App:
         self.status = tk.StringVar()
         self.status_label = ttk.Label(frame, textvariable=self.status, justify="left")
         self.status_label.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(4, 0))
-        self.status_label.bind("<Configure>", self.wrap_status)
+        self.status_label.bind("<Configure>", self.wrap)
         self.status.trace_add("write", lambda *_: self.fit_height_soon())
         root.resizable(True, False)  # fit_height() sets the height
 
@@ -394,6 +399,11 @@ class App:
             actions, text="Remove", command=self.remove_selected
         )
         self.remove_button.grid(row=0, column=2)
+
+        # UPDATED, under everything else: placed only once there is a newer
+        # yt-dlp (show_update()), so the window has no empty line otherwise.
+        self.update_label = ttk.Label(frame, justify="left")
+        self.update_label.bind("<Configure>", self.wrap)
 
         # Only now: update_states() uses every widget above.
         self.kind.trace_add("write", lambda *_: self.update_states())
@@ -754,16 +764,54 @@ class App:
         # (only the tests open a second window).
         # Stop listening, so a window opened later can listen on the pipe.
         if event.widget is self.root:
-            for scheduled in (self.next_check, self.next_fit, self.next_link_check):
+            for scheduled in (
+                self.next_check,
+                self.next_fit,
+                self.next_link_check,
+                self.next_update_check,
+            ):
                 if scheduled:
                     self.root.after_cancel(scheduled)
             if self.listening is not None:
                 self.listening.close()
 
-    def wrap_status(self, event: tk.Event) -> None:
-        """Wrap the status line at its width, which follows the window's."""
-        self.status_label.configure(wraplength=event.width)
+    def wrap(self, event: tk.Event) -> None:
+        """Wrap a line of text (the status line, UPDATED) at its width, which
+        follows the window's."""
+        event.widget["wraplength"] = event.width
         self.fit_height_soon()
+
+    def look_for_update(self, check: Callable[[], str | None]) -> None:
+        """Run check() in the background (main() passes ytdlp_update.check:
+        a newer yt-dlp for the next start), and show UPDATED once it returns
+        a version; nothing when it returns None."""
+        result: Future[str | None] = Future()
+
+        def run() -> None:
+            try:
+                result.set_result(check())
+            except Exception as error:  # so show_update() stops looking
+                result.set_exception(error)
+
+        threading.Thread(target=run, daemon=True).start()
+        self.show_update(result)
+
+    def show_update(self, result: Future[str | None]) -> None:
+        """Show UPDATED under everything else once look_for_update()'s check
+        has found a version; until it has ended, look every CHECK_EVERY ms."""
+        if not result.done():
+            self.next_update_check = self.root.after(
+                CHECK_EVERY, self.show_update, result
+            )
+            return
+        self.next_update_check = ""
+        version = None if result.exception() else result.result()
+        if version:
+            self.update_label.configure(text=UPDATED.format(version=version))
+            self.update_label.grid(
+                row=9, column=0, columnspan=2, sticky="ew", pady=(8, 0)
+            )
+            self.fit_height_soon()
 
     def fit_height_soon(self) -> None:
         """Run fit_height() once Tk has worked out the new layout."""
@@ -1053,8 +1101,9 @@ def main(arguments: list[str] | None = None) -> None:
     hold_mutex(APP_ID)
     app = start(listening=listening, link=link, choices=choices)
     # Once the window is built, the built app looks for a newer yt-dlp, for
-    # its next start (from the project it doesn't).
-    threading.Thread(target=ytdlp_update.check, daemon=True).start()
+    # its next start, and says so when it got one (from the project it
+    # doesn't look).
+    app.look_for_update(ytdlp_update.check)
     app.root.mainloop()
 
 

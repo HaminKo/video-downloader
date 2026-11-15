@@ -44,7 +44,12 @@ Started 2026-11-14 (To do 11, questions and plan). Marked by how each fact is kn
 
 ## Updating yt-dlp
 - Inside a built app, `pip install -U` can't update yt-dlp (general knowledge). Options: build and install again with a newer yt-dlp, or the app fetches a newer yt-dlp itself at start-up (docs/decisions.md, 2026-11-11 Reddit entry: "about once a week, if it's ever wanted").
-- The second is To do 21 since 2026-11-14 (before going public); its research goes into docs/research/yt-dlp-update.md.
+- The second is To do 21 since 2026-11-14 (before going public); its research goes into docs/research/yt-dlp-update.md. Built: the app downloads newer copies into `{app}\yt-dlp` (below).
+
+## The downloaded yt-dlp copies (To do 21, step C, 2026-11-15)
+- **How:** `[UninstallDelete]` `Type: filesandordirs; Name: "{app}\yt-dlp"` in setup.iss: the app makes that folder, so the uninstaller wouldn't know it otherwise. Setup over an install keeps it; the app's own clean-up deletes the copies it won't use (no newer than the new bundled yt-dlp) at its next start (docs/decisions.md, step C's details).
+- **Silent round trip** (measured, `python installer/build.py --no-update`, 1 min 56 s; logs with `/LOG`): Setup over the old install, exit 0 after 7.3 s; the helper answered "Only web pages can be sent." (0.74 s). With the installed dist-info's version lowered to `2026.1.1`, the started window downloaded the real 2026.10.26 from GitHub: `2026.10.26.partial` at 4.1 s, complete at 11.8 s, 2,098 files in `yt-dlp\`, `update.json` with `checked` and `error` null. With the window open, the uninstaller and Setup both stopped (exit 1 after 1.2 s and 1.0 s), the app folder unchanged (every file's size and time). Window closed, Setup over the install: exit 0 (4.1 s), the dist-info back to 2026.10.26, `yt-dlp\` kept (2,098 files). Uninstall: exit 0 (2.2 s), "Removed all? Yes"; the log deletes every file in `yt-dlp\`, then the folder, then the app folder (on its second try, once the uninstaller's own files were gone); the app folder and Chrome's key gone; `%APPDATA%\video-downloader` unchanged. Installed again afterwards (Chrome's key points at it, as before), with the dist-info's version lowered again for the user's test.
+- **Not read:** the window's exit code after `CloseMainWindow()` (PowerShell's `Get-Process` object didn't give it).
 
 ## Signing
 - An unsigned `Setup.exe` downloaded from the internet gets SmartScreen's "Windows protected your PC". A file built on this PC carries no download mark, so SmartScreen shouldn't ask (general knowledge, not tested).

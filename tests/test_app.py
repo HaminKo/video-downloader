@@ -31,6 +31,7 @@ from video_downloader.app import (
     PASTE_A_LINK,
     QUALITIES,
     TITLE,
+    UPDATED,
     WAITING,
     WIDTH,
     App,
@@ -1226,18 +1227,57 @@ def test_start_with_choices_downloads_in_a_minimized_window(
         window.root.destroy()
 
 
+def wait_for_the_update_check(app: App) -> None:
+    """Let the window run until it has stopped looking for look_for_update()'s
+    result."""
+    deadline = time.monotonic() + 5
+    while app.next_update_check:
+        assert time.monotonic() < deadline, "the window kept looking"
+        app.root.update()
+        time.sleep(0.01)
+
+
+def test_the_update_line_shows_once_the_check_has_a_version(app: App) -> None:
+    release = threading.Event()
+
+    def check() -> str | None:  # a download and its compiling take a while
+        release.wait(5)
+        return "2099.1.1"
+
+    app.look_for_update(check)
+    assert app.next_update_check, "the window looks again later"
+    assert app.update_label.winfo_manager() == "", "no line before the check ends"
+    release.set()
+    wait_for_the_update_check(app)
+    assert app.update_label.winfo_manager() == "grid"
+    assert app.update_label.cget("text") == UPDATED.format(version="2099.1.1")
+
+
+def test_a_failing_update_check_shows_no_line(app: App) -> None:
+    def check() -> str | None:  # ytdlp_update.check() never raises, but
+        raise OSError("the disk")
+
+    app.look_for_update(check)
+    wait_for_the_update_check(app)
+    assert app.update_label.winfo_manager() == ""
+
+
 @pytest.fixture
 def opened(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, object]]]:
     """Record the windows main() opens instead of opening them, each with the
     mutexes held by then ("held"; not made, or this test run would hold the
-    app's). The pipe each one took stays taken until the test ends, as by a
-    window still being built (it reads only once it is built)."""
+    app's) and the yt-dlp update checks it was given ("checks"; not run).
+    The pipe each one took stays taken until the test ends, as by a window
+    still being built (it reads only once it is built)."""
     calls: list[dict[str, object]] = []
     held: list[str] = []
 
     def fake_start(**options: object) -> SimpleNamespace:
-        calls.append(options | {"held": held.copy()})
-        return SimpleNamespace(root=SimpleNamespace(mainloop=lambda: None))
+        checks: list[object] = []
+        calls.append(options | {"held": held.copy(), "checks": checks})
+        return SimpleNamespace(
+            root=SimpleNamespace(mainloop=lambda: None), look_for_update=checks.append
+        )
 
     monkeypatch.setattr("video_downloader.app.start", fake_start)
     monkeypatch.setattr("video_downloader.app.hold_mutex", held.append)
@@ -1245,14 +1285,6 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, object]]]
     for options in calls:
         if isinstance(listening := options["listening"], handoff.Listening):
             listening.close()
-
-
-@pytest.fixture
-def update_check(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
-    """Set once the yt-dlp update check main() starts in a thread has run."""
-    checked = threading.Event()
-    monkeypatch.setattr(ytdlp_update, "check", checked.set)
-    return checked
 
 
 def took_the_pipe(options: dict[str, object]) -> bool:
@@ -1277,7 +1309,7 @@ def open_window_on(pipe: str) -> Iterator[queue.Queue[Message]]:
 
 
 def test_main_hands_everything_to_the_open_window(
-    opened: list[dict[str, object]], update_check: threading.Event
+    opened: list[dict[str, object]],
 ) -> None:
     with open_window_on(handoff.PIPE) as received:
         main([f" {LINK} "])
@@ -1291,8 +1323,7 @@ def test_main_hands_everything_to_the_open_window(
         Message(LINK, Choices("mp3", "Best", False)),
         handoff.SHOW,
     ]
-    assert opened == [], "no second window"
-    assert not update_check.is_set(), "only the window that opens checks"
+    assert opened == [], "no second window, so no yt-dlp update check either"
 
 
 @pytest.mark.parametrize(
@@ -1304,14 +1335,13 @@ def test_main_opens_a_window_with_the_link_when_none_is_open(
     arguments: list[str],
     choices: Choices | None,
     opened: list[dict[str, object]],
-    update_check: threading.Event,
 ) -> None:
     main(arguments)
     [options] = opened
     assert took_the_pipe(options)
     assert (options["link"], options["choices"]) == (LINK, choices)
     assert options["held"] == [APP_ID], "Setup's mutex, before the window opens"
-    assert update_check.wait(5), "the yt-dlp update check started"
+    assert options["checks"] == [ytdlp_update.check], "the window looks for yt-dlp"
 
 
 def test_main_without_a_link_opens_an_empty_window(
@@ -1345,6 +1375,7 @@ def test_two_windows_started_at_once_end_in_one(
         "link": LINK,
         "choices": Choices("mp4"),
         "held": [APP_ID],
+        "checks": [ytdlp_update.check],
     }
     listening = options["listening"]
     assert took_the_pipe(options) and isinstance(listening, handoff.Listening)
@@ -1395,7 +1426,13 @@ def test_main_opens_a_window_when_the_pipe_cant_be_made(
     monkeypatch.setattr(handoff, "PIPE", too_long)
     main([LINK])
     assert opened == [
-        {"listening": None, "link": LINK, "choices": None, "held": [APP_ID]}
+        {
+            "listening": None,
+            "link": LINK,
+            "choices": None,
+            "held": [APP_ID],
+            "checks": [ytdlp_update.check],
+        }
     ]
 
 
