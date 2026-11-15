@@ -2,6 +2,15 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-15: The repo goes public with its history; the commit e-mail stays in it
+- **Decision:** the pre-release privacy scan found nothing from CLAUDE.md's "Never in tracked files" list in the tracked files, in any of the 48 commits, or in the built app (docs/todo.md, the scan's item), so the repo goes public as it is, with no new repo. Every commit carries the repo's commit identity, including its e-mail address (docs/local.md). It stays there, and new commits keep using it.
+- **Reason:** only someone who clones the repo or opens a commit's patch sees the e-mail, the same "digging through history" the user already accepts for the login in old commits. The cost is some spam from bots that collect addresses from public repos.
+- **Who decided:** the user, taking Claude's suggestion.
+- **Rejected:**
+  - a new repo with one clean commit under GitHub's private "noreply" address: hides the e-mail completely, but loses the 48 commits of history
+  - only future commits under "noreply": hides nothing, as the old commits still show the address
+  - rewriting the history: the user's rule is a new repo instead of a rewrite
+
 ## 2026-11-15: Setup.exe as a GitHub Release download; mutagen left out, the licenses shipped, the version 0.1.0 plus the build time
 - **Decision:** others get the app as `Video Downloader Setup.exe` from a GitHub Release (tag `vX.Y.Z`, notes from the changelog), published when the repo goes public. The README's "Install and run" is now ffmpeg and Deno with winget, then Setup from the newest release, with SmartScreen's warning (More info > Run anyway) and Chrome's Developer mode said; building it yourself moved under Development ("Building it yourself"). For the download: the build leaves out mutagen (`excludes` in the spec); build.py writes `LICENSE.txt` and `THIRD-PARTY-LICENSES.txt` (Python, Tcl/Tk and each library the app includes, in full) next to the .exe files, finding the libraries from the modules PyInstaller bundled (the spec writes `build/modules.txt`) and stopping on one without a license file; Settings > Apps shows "0.1.0 (2026.11.15 13:49)": pyproject.toml's version, passed in by build.py (`/DAppNumber`), then the build's date and time; Setup.exe's own file version is the number. A test checks that pyproject.toml's version is CHANGELOG.md's newest.
 - **Reason:** To do 21 keeps an installed app's yt-dlp current, so a download works for others over time. mutagen (GPL 2.0 or later) only embeds thumbnails, which the app never does: leaving it out keeps GPL code out of the download. MIT, BSD and Apache ask for their license text to go with copies, and yt-dlp's updates can add libraries, so the list comes from the build, not by hand. The number tells others which version they have; the time still tells this PC's builds apart (the reason for the date in the 2026-11-14 entry). Measurements: docs/research/installer.md, "Licenses and version".
