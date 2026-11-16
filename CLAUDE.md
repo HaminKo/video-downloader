@@ -26,7 +26,7 @@ Read by the /build-todo skill. Times measured 2026-11-10 (To do 1).
   - pytest runs with `--capture=sys` (set in pyproject.toml): the default breaks a second tkinter window (docs/research/tkinter-tests.md).
   - The GUI test opens the real window on top, on another screen with the main screen's scaling when there is one (on this PC the right-hand one), and doesn't take the keyboard or the front (the first window is in front for about 40 ms per run); real keys and clicks in the test window are ignored. A UI change gets a step in it (tests/gui/window_gui.py; helpers in tests/gui/drive.py). How it works: docs/research/gui-testing.md.
   - Screenshots: `python tests/gui/screenshots.py` (all screens) or `python tests/gui/screenshots.py NAME` (screens: start, progress, done, error, cancelled, queue, playlist, history, received, updated; the Chrome popup: popup, popup-error). Saved to `$env:TEMP\video-downloader-screenshots\NAME.png`, paths printed. About 690 tokens each (estimate from the size, 903 × 571 px measured 2026-11-14); the title bar is grey, as the window isn't in front. The popup's about 160 tokens (492 × 245 px). A new screen gets an entry in `SCREENS` (the popup's: `POPUP_SCREENS`) in that file.
-- **Docs to update when behaviour changes:** README.md (headline features, install and run steps, Credits), docs/using.md (how each part of the window works) and any help text in the app. When the window's look changes, the README's picture too: `python tests/gui/screenshots.py history`, copied to docs/images/window.png. When a README section grows past about a screen, move it into docs/NAME.md and link it from the README.
+- **Docs to update when behaviour changes:** README.md (headline features, install and run steps, Credits), docs/using.md (how each part of the window works), docs/development.md (building it, running it from the project, the checks) and any help text in the app. When the window's look changes, the README's picture too: `python tests/gui/screenshots.py history`, copied to docs/images/window.png. When a README section grows past about a screen, move it into docs/NAME.md and link it from the README.
 - **Must keep working:** Enter in the link box and the Download button both start a download (checked by the GUI test).
 - **Review checklist:** none yet: the built-in code-review skill. Add docs/review.md once the project has its own rules to check.
 - Release steps: docs/research/installer.md, "Releasing" (copy-ready commands: docs/local.md, "Releasing").
@@ -69,10 +69,12 @@ One line per decision to follow; reasons, who decided and what was rejected: doc
 - The updater follows the newest release's `_update_spec` as yt-dlp reads it (variant `zip`), also when the newest failed; a 404 counts as no lock, any other failure means no update that day; nothing shown.
 - The GUI test drives the window with Tk's own key and click events in the same process, never real OS input; screenshots with Pillow (development only).
 - GUI test and screenshot windows open on the topmost other screen with the main screen's scaling (picked automatically) and never take the front: focus with Windows' `SetFocus`, never `focus_force()`; `bring_to_front()` is recorded there, not called.
+- README.md holds what it is, install and run, and credits, each part short; details live in docs/using.md (users) and docs/development.md (building and working on the app), linked from it.
 
 ## Project docs
 - README.md: what it is, install and run, Credits.
 - docs/using.md: using the app in detail (moved out of the README 2026-11-12).
+- docs/development.md: building the app yourself and working on it (moved out of the README 2026-11-15).
 - CHANGELOG.md: what changed in each version, for users.
 - docs/local.md: this PC's paths and copy-ready commands (gitignored).
 - docs/todo.md: the list and "Where we are"; docs/todo/: one file per to-do.

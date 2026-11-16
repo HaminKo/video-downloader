@@ -2,6 +2,17 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-15: The README's Development section moves to docs/development.md
+- **Decision:** the README's "Development" subsections, "Building it yourself" and "Working on the app", moved word for word into docs/development.md (only heading levels and link targets changed). The README keeps the "Development" heading with two bullets linking to the two sections; its "To build Setup yourself instead" line and docs/using.md's three `README, "Development"` pointers now link there. Measured: README 91 to 56 lines, "Development" 39 to 4 lines, install still at line 24.
+- **Reason:** the README rule (~/.claude/CLAUDE.md, "README"). "Development" renders to about 59 lines (estimate, wrapped at 100 characters), more than a screen, and held details that change: the GUI test's time, what `yt-dlp -v` prints, the build's output files. It had grown since the 2026-11-15 check that found the README fitting (73 lines), when "Building it yourself" was added for the Setup.exe release.
+- **Who decided:** the user, taking Claude's suggestions (/trim-readme).
+- **Rejected:**
+  - docs/guide.md, the skill's default: a third, vague name next to docs/using.md; the moved text is for developers, not users
+  - moving it into docs/using.md: that file is about using the app
+  - moving Credits too: it renders long (about 37 lines, estimate), but the README rule keeps credits in the README
+  - a link per bullet in "Using it": it is already a short summary that links to docs/using.md
+  - a root GUIDE.md, a `<details>` block per section, or only reordering sections: a guide belongs in docs/, a folded block still makes the page long when opened, and reordering shortens nothing
+
 ## 2026-11-15: Version 0.1.1 for the updater fix alone; the notes say how to update
 - **Decision:** 0.1.1 is released with one Fixed line, To do 22's updater change, though users see no difference until yt-dlp drops Python 3.13. Its notes add a line after Install: "Updating from 0.1.0: run this Setup; it installs over the old version." The release steps get a pointer line in CLAUDE.md ("Release steps:").
 - **Reason:** the user wants new installs to carry the safer updater now rather than with the next visible change. The installed app updates only yt-dlp, never itself, so 0.1.0 users need to know that Setup is how they update.
