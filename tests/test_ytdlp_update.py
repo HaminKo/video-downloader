@@ -320,9 +320,17 @@ def test_a_failed_newest_still_gives_the_last_release_for_this_python(
     github: FakeGitHub, folder: Path
 ) -> None:
     write_notes(folder, Notes(failed=[NEWER]))  # its _update_spec came later
+    (folder / NEWER).mkdir()  # use_newest() failed it; clean_up() comes after
     github.release(LOCKED, newest=False)
     github.release(NEWER, spec=v2(ZIP))
     assert ytdlp_update.check() == LOCKED
+    assert names(folder) == [LOCKED, "update.json"]
+    assert github.asked == [
+        "/latest",
+        SPEC,
+        f"/download/{LOCKED}/SHA2-256SUMS",
+        f"/download/{LOCKED}/yt-dlp",
+    ]
 
 
 @pytest.mark.parametrize("fault", ["cut off", "a web page"])

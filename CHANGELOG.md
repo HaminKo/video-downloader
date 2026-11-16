@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- When a downloaded yt-dlp doesn't work with the app, the app's own yt-dlp update no longer waits an extra day before getting the last version that does.
+
 ## [0.1.1] - 2026-11-15
 
 ### Fixed

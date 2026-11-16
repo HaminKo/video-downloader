@@ -208,9 +208,9 @@ def forget(path: str) -> None:
 def check() -> str | None:
     """In the built app: once a day, download yt-dlp's newest release (for
     this Python: locked()) when it's newer than the bundled yt-dlp and every
-    copy, for the next start; then delete the copies that won't be used
-    again. The version just downloaded, else None. Never raises: what went
-    wrong goes into the notes."""
+    copy that hasn't failed, for the next start; then delete the copies that
+    won't be used again. The version just downloaded, else None. Never
+    raises: what went wrong goes into the notes."""
     if not places.built():
         return None
     folder = places.ytdlp_folder()
@@ -238,12 +238,12 @@ def update(folder: Path, notes: Notes) -> str | None:
         version = newest_release()
         notes.checked = datetime.now(UTC)
         notes.error = None
-        if not newer(version, bundled, folder):
+        if not newer(version, bundled, folder, notes):
             return None
         # Also when the newest failed: it may need a newer Python, and its
         # _update_spec may name the last release for this one only now.
         version = locked(version)
-        if version in notes.failed or not newer(version, bundled, folder):
+        if version in notes.failed or not newer(version, bundled, folder, notes):
             return None
         install(version, folder)
         return version
@@ -298,13 +298,16 @@ def newest_release() -> str:
     return version
 
 
-def newer(version: str, bundled: tuple[int, ...], folder: Path) -> bool:
+def newer(version: str, bundled: tuple[int, ...], folder: Path, notes: Notes) -> bool:
     """Whether a release is newer than the bundled yt-dlp and every complete
-    copy."""
+    copy that hasn't failed, as usable() counts them: a failed copy stays on
+    disk until clean_up(), after update()."""
     number = parse(version)
     if number is None or number <= bundled:
         return False
-    return all(copy < number for copy, _ in copies(folder))
+    return all(
+        copy < number for copy, name in copies(folder) if name not in notes.failed
+    )
 
 
 def locked(version: str) -> str:
@@ -328,8 +331,10 @@ def locked(version: str) -> str:
     # lockV2 lines name the channel: when there are any, only those count.
     v2 = any(line.startswith("lockV2 ") for line in lines)
     prefix = f"lockV2 {REPOSITORY} " if v2 else "lock "
+    newest = parse(version)
+    if newest is None:  # newest_release() checked it already
+        raise ValueError(f"not a version: {version!r}")
     system = identifier()
-    newest = parse(version) or ()
     for line in lines:
         if not line.startswith(prefix):
             continue
