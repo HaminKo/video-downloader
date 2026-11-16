@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "video-downloader"
-version = "0.1.1"
+version = "0.1.2"
 description = "Paste a video link, get it as MP4 or MP3: a small window on top of yt-dlp."
 readme = "README.md"
 requires-python = ">=3.13"
