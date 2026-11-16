@@ -2,6 +2,14 @@
 
 Each entry: `## YYYY-MM-DD: the decision` as the heading, then the reason, who decided, and what was rejected and why. Newest first.
 
+## 2026-11-15: Version 0.1.1 for the updater fix alone; the notes say how to update
+- **Decision:** 0.1.1 is released with one Fixed line, To do 22's updater change, though users see no difference until yt-dlp drops Python 3.13. Its notes add a line after Install: "Updating from 0.1.0: run this Setup; it installs over the old version." The release steps get a pointer line in CLAUDE.md ("Release steps:").
+- **Reason:** the user wants new installs to carry the safer updater now rather than with the next visible change. The installed app updates only yt-dlp, never itself, so 0.1.0 users need to know that Setup is how they update.
+- **Who decided:** the user ("release 0.1.1 anyways"); the notes line by Claude.
+- **Rejected:**
+  - waiting for a change users can see (Claude's suggestion): the fix only matters once yt-dlp drops Python 3.13 (an estimate: about October 2029), and an app that ran in the weeks before that would mostly have the last working yt-dlp anyway
+  - 0.2.0: a fix only raises the last number
+
 ## 2026-11-15: The yt-dlp updater reads `_update_spec` (variant `zip`); a missing one counts as no lock
 - **Decision:** when the newest release is newer than what the app has, the updater reads that release's `_update_spec` as yt-dlp's own updater does (`lockV2 yt-dlp/yt-dlp` lines when there are any, else `lock` lines, `re.match` against `zip` plus yt-dlp's `system_identifier()` without the C library, the first match wins) and downloads the locked release instead, if that is newer than what the app has and hasn't failed. This also happens when the newest itself failed. Not shown in the window. A 404 for the file counts as no lock (the newest is downloaded). Any other failure (no internet, a cut download, GitHub's HTML error page) stops the update for the day. Details: docs/research/yt-dlp-update.md, "To do 22".
 - **Reason:** once yt-dlp drops Python 3.13, every newer release fails the app's import check, so without the spec the app would stay on whatever it had until a new Setup. The app downloads the zipapp, so `zip` is the variant whose lock lines apply. On a 404 yt-dlp's own updater stops (read in its code), but here the import check already keeps a too-new release from being used: yt-dlp refuses an old Python when it is imported. And if yt-dlp ever stopped publishing the file, stopping would mean the app never updates again.

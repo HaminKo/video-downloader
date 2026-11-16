@@ -29,6 +29,7 @@ Read by the /build-todo skill. Times measured 2026-11-10 (To do 1).
 - **Docs to update when behaviour changes:** README.md (headline features, install and run steps, Credits), docs/using.md (how each part of the window works) and any help text in the app. When the window's look changes, the README's picture too: `python tests/gui/screenshots.py history`, copied to docs/images/window.png. When a README section grows past about a screen, move it into docs/NAME.md and link it from the README.
 - **Must keep working:** Enter in the link box and the Download button both start a download (checked by the GUI test).
 - **Review checklist:** none yet: the built-in code-review skill. Add docs/review.md once the project has its own rules to check.
+- Release steps: docs/research/installer.md, "Releasing" (copy-ready commands: docs/local.md, "Releasing").
 
 ## Status
 Now and next: the "Where we are" block at the top of docs/todo.md.

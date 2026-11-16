@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-15
+
+### Fixed
+- When a new yt-dlp drops support for the app's Python version, the app's own yt-dlp update now gets the last yt-dlp that still works with the app, instead of staying on the one it has.
+
 ## [0.1.0] - 2026-11-15
 The first version, for Windows (built and tested on Windows 11).
 
