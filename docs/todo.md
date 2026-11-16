@@ -1,10 +1,11 @@
 # To do
 
 ## Where we are
-- Now: nothing open (version 0.1.1 released 2026-11-15; the review's small updater fixes 2026-11-16; no to-dos left)
+- Now: nothing open (version 0.1.2 released 2026-11-16, the review's small updater fixes; no to-dos left)
 - Next: nothing under Bugs me
-- Watch: at the next yt-dlp release, the installed app should say "yt-dlp was updated to VERSION" within about 15 s of opening; that is the first time its `_update_spec` code runs in the built app. If it doesn't by the next day, `update.json` in the app folder's `yt-dlp` holds the error (docs/research/yt-dlp-update.md, "Still not checked").
 - Updated: 2026-11-16
+
+To watch: at the next yt-dlp release, the installed app should say "yt-dlp was updated to VERSION" within about 15 s of opening; that is the first time its `_update_spec` code runs in the built app. If it doesn't by the next day, `update.json` in the app folder's `yt-dlp` holds the error (docs/research/yt-dlp-update.md, "Still not checked").
 
 ## To do
 Next number: 23. Numbers are permanent: never renumber or reuse one; to move a to-do, move its line.
