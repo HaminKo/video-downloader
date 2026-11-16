@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: nothing open (0.1.0 released, repo public)
+- Now: nothing open (To do 22 finished; no to-dos left)
 - Next: nothing under Bugs me
 - Updated: 2026-11-15
 
@@ -21,7 +21,7 @@ At most 5, in order: the next ones to build. When Now is finished, the first one
 ### Someday
 Everything else, unordered (grouped by area once it grows). A Someday to-do moves up only when it starts to bug the user.
 
-- To do 22: the yt-dlp updater follows yt-dlp's `_update_spec` (small; user 2026-11-14): docs/todo/22-ytdlp-update-spec.md
+- Nothing here now (To do 22 finished 2026-11-15: docs/archive/22-ytdlp-update-spec.md).
 
 ## Later, only if the user asks
 - Nothing here now (all moved into the list above on 2026-11-11).

@@ -5,7 +5,9 @@ notes (NOTES) beside them:
 
 - check(), in a background thread of the window, at most once a day: asks
   yt-dlp's GitHub for its newest stable release, and when that is newer
-  than the bundled yt-dlp and every copy, downloads the release's zipapp,
+  than the bundled yt-dlp and every copy, reads the release's _update_spec
+  (which names the last release for a Python yt-dlp no longer supports,
+  then used instead), downloads the release's zipapp,
   checks it against the release's SHA2-256SUMS, unpacks it into
   VERSION.partial, compiles it and renames the folder to VERSION. Then it
   deletes the copies that won't be used again (clean_up()).
@@ -27,11 +29,14 @@ import importlib.metadata
 import io
 import json
 import os
+import platform
 import py_compile
 import re
 import shutil
+import ssl
 import sys
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import dataclass, field
@@ -52,6 +57,9 @@ API_HEADERS = {
 }
 ZIPAPP = "yt-dlp"  # the release's Python zipapp: yt_dlp and yt_dlp_ejs
 SUMS = "SHA2-256SUMS"  # one line per file: its SHA-256, then its name
+SPEC = "_update_spec"  # lock lines: the last release for an old Python
+REPOSITORY = "yt-dlp/yt-dlp"  # the stable channel, as lockV2 lines name it
+VARIANT = "zip"  # the zipapp, as the lock lines name it
 TIMEOUT = 30  # seconds without an answer before a request fails
 RENAME_TRIES = 10  # a copy's rename, once complete, RENAME_WAIT seconds apart
 RENAME_WAIT = 0.5
@@ -198,11 +206,11 @@ def forget(path: str) -> None:
 
 
 def check() -> str | None:
-    """In the built app: once a day, download yt-dlp's newest release when
-    it's newer than the bundled yt-dlp and every copy, for the next start;
-    then delete the copies that won't be used again. The version just
-    downloaded, else None. Never raises: what went wrong goes into the
-    notes."""
+    """In the built app: once a day, download yt-dlp's newest release (for
+    this Python: locked()) when it's newer than the bundled yt-dlp and every
+    copy, for the next start; then delete the copies that won't be used
+    again. The version just downloaded, else None. Never raises: what went
+    wrong goes into the notes."""
     if not places.built():
         return None
     folder = places.ytdlp_folder()
@@ -218,8 +226,10 @@ def check() -> str | None:
 
 
 def update(folder: Path, notes: Notes) -> str | None:
-    """Ask GitHub for the newest release and download it if it's wanted();
-    its version then, else None. The notes are written afterwards."""
+    """Ask GitHub for the newest release and, if it is newer() than what is
+    here, download it or the last release for this Python (locked()), when
+    that is newer too and not a version that failed; its version then, else
+    None. The notes are written afterwards."""
     version = None
     try:
         bundled = parse(bundled_version() or "")
@@ -228,7 +238,12 @@ def update(folder: Path, notes: Notes) -> str | None:
         version = newest_release()
         notes.checked = datetime.now(UTC)
         notes.error = None
-        if not wanted(version, bundled, folder, notes):
+        if not newer(version, bundled, folder):
+            return None
+        # Also when the newest failed: it may need a newer Python, and its
+        # _update_spec may name the last release for this one only now.
+        version = locked(version)
+        if version in notes.failed or not newer(version, bundled, folder):
             return None
         install(version, folder)
         return version
@@ -283,13 +298,63 @@ def newest_release() -> str:
     return version
 
 
-def wanted(version: str, bundled: tuple[int, ...], folder: Path, notes: Notes) -> bool:
-    """Whether to download the release: newer than the bundled yt-dlp and
-    every complete copy, and not a version that failed."""
+def newer(version: str, bundled: tuple[int, ...], folder: Path) -> bool:
+    """Whether a release is newer than the bundled yt-dlp and every complete
+    copy."""
     number = parse(version)
-    if number is None or number <= bundled or version in notes.failed:
+    if number is None or number <= bundled:
         return False
     return all(copy < number for copy, _ in copies(folder))
+
+
+def locked(version: str) -> str:
+    """The release to download instead of `version`, the newest: the last
+    one for this Python when the newest's SPEC names one (yt-dlp no longer
+    supports it), read as yt-dlp's own updater reads it, else `version`.
+    Without a SPEC (a 404) `version` too: yt-dlp's updater would stop, but
+    here use_newest()'s import check keeps a release that needs a newer
+    Python from being used (docs/research/yt-dlp-update.md). Raises when
+    the SPEC can't be had otherwise, as yt-dlp's updater stops then."""
+    try:
+        spec = fetch(DOWNLOAD.format(version=version, name=SPEC))
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return version
+        raise
+    # GitHub can answer 200 with its error page (yt-dlp issue 17550).
+    if b"<!DOCTYPE html>" in spec[:512]:
+        raise ValueError(f"{SPEC} {version}: GitHub sent a web page")
+    lines = spec.decode("utf-8", "replace").splitlines()
+    # lockV2 lines name the channel: when there are any, only those count.
+    v2 = any(line.startswith("lockV2 ") for line in lines)
+    prefix = f"lockV2 {REPOSITORY} " if v2 else "lock "
+    system = identifier()
+    newest = parse(version) or ()
+    for line in lines:
+        if not line.startswith(prefix):
+            continue
+        tag, _, pattern = line.removeprefix(prefix).partition(" ")
+        number = parse(tag)  # it becomes a folder's name and part of a link
+        if number is None or not pattern:
+            continue
+        try:
+            matched = re.match(pattern, system)
+        except re.error:  # a pattern Python can't read: as if it weren't there
+            continue
+        if matched:  # the first match wins, and only ever gives an older one
+            return tag if number < newest else version
+    return version
+
+
+def identifier() -> str:
+    """What the lock lines are matched against: the variant the app downloads
+    and the system as yt-dlp's system_identifier() writes it, without the C
+    library (Linux only; on Windows it would read through the whole .exe)."""
+    python = platform.python_version()
+    build = f"{platform.python_implementation()} {platform.machine()}"
+    bits = platform.architecture()[0]
+    system = f"{platform.platform()} ({ssl.OPENSSL_VERSION})"
+    return f"{VARIANT} Python {python} ({build} {bits}) - {system}"
 
 
 def install(version: str, folder: Path) -> None:

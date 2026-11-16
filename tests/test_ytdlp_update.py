@@ -12,6 +12,8 @@ import hashlib
 import importlib.util
 import io
 import json
+import platform
+import re
 import subprocess
 import sys
 import threading
@@ -27,6 +29,7 @@ from pathlib import Path
 import pytest
 import yt_dlp
 import yt_dlp.cookies
+from yt_dlp.utils import system_identifier
 
 from video_downloader import places, ytdlp_update
 from video_downloader.ytdlp_update import Notes, read_notes, write_notes
@@ -68,16 +71,25 @@ class FakeGitHub:
         self.cut: set[str] = set()
 
     def release(
-        self, version: str, files: dict[str, str] | None = None, sums: str = ""
+        self,
+        version: str,
+        files: dict[str, str] | None = None,
+        sums: str = "",
+        spec: str | None = None,
+        newest: bool = True,
     ) -> None:
-        """Make `version` the newest release, with a zipapp of these files
-        (FAKE_YTDLP's by default) and this SHA2-256SUMS (the right one by
-        default)."""
+        """A release `version`, the newest one unless `newest` is False, with
+        a zipapp of these files (FAKE_YTDLP's by default), this SHA2-256SUMS
+        (the right one by default) and this _update_spec (none by default:
+        a 404)."""
         app = zipapp(FAKE_YTDLP if files is None else files)
         sums = sums or f"{sha256(b'other')}  yt-dlp.exe\n{sha256(app)}  yt-dlp\n"
-        self.files["/latest"] = json.dumps({"tag_name": version}).encode()
+        if newest:
+            self.files["/latest"] = json.dumps({"tag_name": version}).encode()
         self.files[f"/download/{version}/yt-dlp"] = app
         self.files[f"/download/{version}/SHA2-256SUMS"] = sums.encode()
+        if spec is not None:
+            self.files[f"/download/{version}/_update_spec"] = spec.encode()
 
 
 @pytest.fixture
@@ -145,6 +157,7 @@ def test_a_newer_release_is_ready_for_the_next_start(
         assert Path(importlib.util.cache_from_source(str(source))).is_file()
     assert github.asked == [
         "/latest",
+        f"/download/{NEWER}/_update_spec",
         f"/download/{NEWER}/SHA2-256SUMS",
         f"/download/{NEWER}/yt-dlp",
     ]
@@ -213,7 +226,10 @@ def test_downloads_only_a_version_it_can_use(
     elif why == "failed":
         write_notes(folder, Notes(failed=[NEWER]))
     assert ytdlp_update.check() is None
-    assert github.asked == ["/latest"]
+    if why == "failed":  # its _update_spec may name an older release to use
+        assert github.asked == ["/latest", f"/download/{NEWER}/_update_spec"]
+    else:
+        assert github.asked == ["/latest"]
 
 
 def test_a_release_that_does_not_compile_is_never_downloaded_again(
@@ -230,7 +246,144 @@ def test_a_release_that_does_not_compile_is_never_downloaded_again(
     write_notes(folder, notes)
     github.asked.clear()
     assert ytdlp_update.check() is None
-    assert github.asked == ["/latest"]
+    assert github.asked == ["/latest", f"/download/{NEWER}/_update_spec"]
+
+
+LOCKED = "2098.01.01"  # the last release for the running Python
+SPEC = f"/download/{NEWER}/_update_spec"
+OLDER = "2097.01.01"
+# The running Python as _update_spec's lock lines name it (Python 3\.13), the
+# zipapp's line for it, and an older Python's.
+PYTHON = "Python " + re.escape(".".join(platform.python_version_tuple()[:2]))
+ZIP = f"zip {PYTHON}"
+OLD_ZIP = r"zip Python 3\.10"
+HTML = "<!DOCTYPE html>\n<html><body>GitHub's error page</body></html>\n"
+
+
+def v2(pattern: str, tag: str = LOCKED, repo: str = "yt-dlp/yt-dlp") -> str:
+    """A lockV2 line of _update_spec."""
+    return f"lockV2 {repo} {tag} {pattern}"
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        pytest.param(v2(ZIP), LOCKED, id="lockV2"),
+        pytest.param(f"lock {LOCKED} {ZIP}", LOCKED, id="lock"),
+        pytest.param(v2(f".+ {PYTHON}"), LOCKED, id="any build"),
+        pytest.param(
+            "\n".join(["# a comment", v2(OLD_ZIP, OLDER), v2(ZIP), v2(ZIP, OLDER)]),
+            LOCKED,
+            id="the first match",
+        ),
+        pytest.param(None, NEWER, id="no _update_spec"),
+        pytest.param(v2(OLD_ZIP), NEWER, id="another Python"),
+        pytest.param(v2(f"win_exe {PYTHON}"), NEWER, id="another build"),
+        pytest.param(v2(ZIP, repo="yt-dlp/yt-dlp-nightly-builds"), NEWER, id="nightly"),
+        pytest.param(f"lock {LOCKED} {ZIP}\n{v2(OLD_ZIP)}", NEWER, id="lock, lockV2"),
+        pytest.param(v2(ZIP, "2100.01.01"), NEWER, id="a newer tag"),
+        pytest.param(v2(ZIP, r"..\evil"), NEWER, id="not a version"),
+        pytest.param(f"lockV2 yt-dlp/yt-dlp {LOCKED}", NEWER, id="no pattern"),
+        pytest.param(v2("zip Python ("), NEWER, id="a broken pattern"),
+    ],
+)
+def test_update_spec_names_the_last_release_for_this_python(
+    github: FakeGitHub, folder: Path, spec: str | None, expected: str
+) -> None:
+    github.release(LOCKED, newest=False)
+    github.release(NEWER, spec=spec)
+    assert ytdlp_update.check() == expected
+    assert names(folder) == [expected, "update.json"]
+    assert github.asked == [
+        "/latest",
+        SPEC,
+        f"/download/{expected}/SHA2-256SUMS",
+        f"/download/{expected}/yt-dlp",
+    ]
+
+
+@pytest.mark.parametrize("why", ["downloaded already", "failed"])
+def test_the_last_release_for_this_python_only_once(
+    github: FakeGitHub, folder: Path, why: str
+) -> None:
+    github.release(LOCKED, newest=False)
+    github.release(NEWER, spec=v2(ZIP))
+    if why == "downloaded already":
+        (folder / LOCKED).mkdir(parents=True)
+    else:
+        write_notes(folder, Notes(failed=[LOCKED]))
+    assert ytdlp_update.check() is None
+    assert github.asked == ["/latest", SPEC]
+
+
+def test_a_failed_newest_still_gives_the_last_release_for_this_python(
+    github: FakeGitHub, folder: Path
+) -> None:
+    write_notes(folder, Notes(failed=[NEWER]))  # its _update_spec came later
+    github.release(LOCKED, newest=False)
+    github.release(NEWER, spec=v2(ZIP))
+    assert ytdlp_update.check() == LOCKED
+
+
+@pytest.mark.parametrize("fault", ["cut off", "a web page"])
+def test_an_update_spec_that_cant_be_read_stops_the_update(
+    github: FakeGitHub, folder: Path, fault: str
+) -> None:
+    github.release(LOCKED, newest=False)
+    if fault == "cut off":
+        github.release(NEWER, spec=v2(ZIP))
+        github.cut.add(SPEC)
+    else:
+        github.release(NEWER, spec=HTML)
+    assert ytdlp_update.check() is None
+    assert names(folder) == ["update.json"]
+    assert github.asked == ["/latest", SPEC]
+    notes = read_notes(folder)
+    assert notes.error, "why, to look into"
+    assert notes.failed == [], "tried again tomorrow"
+
+
+def test_the_system_is_named_as_yt_dlp_names_it() -> None:
+    assert ytdlp_update.identifier() == f"zip {system_identifier()}"
+
+
+# Lines of the real _update_spec, as yt-dlp 2026.10.26 had it (2026-11-15).
+REAL_SPEC = r"""# This file is used for regulating self-update
+lock 2022.08.18.36 .+ Python 3\.6
+lock 2023.11.16 zip Python 3\.7
+lock 2025.10.14 zip Python 3\.9
+lock 2026.10.21 zip Python 3\.10
+lock 2026.10.21 win(?:_x86)?_exe Python .+ Windows-(?:8|2012Server)
+lockV2 yt-dlp/yt-dlp 2022.08.18.36 .+ Python 3\.6
+lockV2 yt-dlp/yt-dlp 2023.11.16 zip Python 3\.7
+lockV2 yt-dlp/yt-dlp 2023.11.16 win_x86_exe .+ Windows-(?:Vista|2008Server)
+lockV2 yt-dlp/yt-dlp 2024.10.22 zip Python 3\.8
+lockV2 yt-dlp/yt-dlp 2025.10.14 zip Python 3\.9
+lockV2 yt-dlp/yt-dlp 2026.10.21 zip Python 3\.10
+lockV2 yt-dlp/yt-dlp 2026.10.21 win(?:_x86)?_exe Python .+ Windows-(?:8|2012Server)
+lockV2 yt-dlp/yt-dlp-nightly-builds 2025.10.14.232845 zip Python 3\.9
+lockV2 yt-dlp/yt-dlp-nightly-builds 2026.10.21.202512 zip Python 3\.10
+"""
+
+
+@pytest.mark.parametrize(
+    ("python", "expected"),
+    [
+        ("3.13.1", "2026.10.26"),
+        ("3.11.9", "2026.10.26"),
+        ("3.10.11", "2026.10.21"),
+        ("3.9.13", "2025.10.14"),
+        ("3.8.10", "2024.10.22"),
+        ("3.6.8", "2022.08.18.36"),
+    ],
+)
+def test_the_real_update_spec(
+    github: FakeGitHub, monkeypatch: pytest.MonkeyPatch, python: str, expected: str
+) -> None:
+    system = f"zip Python {python} (CPython AMD64 64bit) - Windows-11-10.0.26300-SP0"
+    monkeypatch.setattr(ytdlp_update, "identifier", lambda: system)
+    github.release("2026.10.26", spec=REAL_SPEC)
+    assert ytdlp_update.locked("2026.10.26") == expected
 
 
 def test_clean_up_keeps_the_copy_in_use_and_the_newest(

@@ -20,7 +20,10 @@ Example: in late 2029, yt-dlp 2029.10.20 drops Python 3.13, and 2029.10.15 is th
 ## Ask the user
 1. Match as the variant `zip`? Suggested: yes, since the app downloads the zipapp. The lock lines for `zip` name the Python version only.
 2. Show anything when the version is capped? Suggested: no, the same as "no update".
+3. (Added 2026-11-15.) A missing `_update_spec` (a 404)? Suggested: download the newest, since the import check already keeps a too-new release from being used.
+
+Answers (the user, 2026-11-15): all three as suggested (docs/decisions.md, 2026-11-15 "`_update_spec`").
 
 ## Test
-- **Claude:** with To do 21's local web server: an `_update_spec` whose lock line matches the running Python makes the updater download the locked tag, not the latest; one that doesn't match changes nothing; a missing `_update_spec` (a 404) falls back to the latest, as yt-dlp's own updater does.
+- **Claude:** with To do 21's local web server: an `_update_spec` whose lock line matches the running Python makes the updater download the locked tag, not the latest; one that doesn't match changes nothing; a missing `_update_spec` (a 404) falls back to the latest, ~~as yt-dlp's own updater does~~ (wrong, found 2026-11-15: yt-dlp's updater stops on a 404; the app falls back anyway, question 3).
 - **The user:** nothing by hand (the case can't happen before yt-dlp drops Python 3.13).
