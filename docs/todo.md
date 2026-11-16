@@ -1,7 +1,7 @@
 # To do
 
 ## Where we are
-- Now: nothing open (version 0.1.1 built 2026-11-15, for the user to publish; no to-dos left)
+- Now: nothing open (version 0.1.1 released 2026-11-15; no to-dos left)
 - Next: nothing under Bugs me
 - Updated: 2026-11-15
 
